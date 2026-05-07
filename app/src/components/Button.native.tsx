@@ -7,6 +7,7 @@ import {
   ViewStyle,
   TextStyle,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme';
 
 interface ButtonProps {
@@ -40,22 +41,44 @@ export function Button({
 
   const textSizes = { sm: 13, md: 15, lg: 17 };
 
-  const variantBg: Record<string, string> = {
-    primary: theme.colors.primary,
-    secondary: theme.colors.secondary,
-    danger: theme.colors.error,
-    outline: 'transparent',
-    ghost: 'transparent',
+  if (variant === 'primary') {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={isDisabled}
+        activeOpacity={0.8}
+        style={[styles.base, style, isDisabled && styles.disabled]}
+      >
+        <LinearGradient
+          colors={['#7C3AED', '#5B21B6']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={[styles.gradient, sizeStyles[size]]}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={[styles.text, { fontSize: textSizes[size] }, textStyle]}>{title}</Text>
+          )}
+        </LinearGradient>
+      </TouchableOpacity>
+    );
+  }
+
+  const variantStyles: Record<string, ViewStyle> = {
+    secondary: { backgroundColor: theme.colors.secondary },
+    outline: {
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: theme.colors.primary,
+    },
+    danger: { backgroundColor: theme.colors.error },
+    ghost: { backgroundColor: 'transparent' },
   };
 
-  const variantBorder: Record<string, object> = {
-    outline: { borderWidth: 1, borderColor: theme.colors.primary },
-    ghost: {},
-  };
-
-  const variantTextColor: Record<string, string> = {
-    outline: theme.colors.primary,
-    ghost: theme.colors.textSecondary,
+  const variantTextStyles: Record<string, TextStyle> = {
+    outline: { color: theme.colors.primary },
+    ghost: { color: theme.colors.textSecondary },
   };
 
   return (
@@ -65,8 +88,8 @@ export function Button({
       activeOpacity={0.8}
       style={[
         styles.base,
-        { backgroundColor: variantBg[variant] ?? theme.colors.primary },
-        variantBorder[variant] ?? {},
+        styles.solidBase,
+        variantStyles[variant],
         sizeStyles[size],
         isDisabled && styles.disabled,
         style,
@@ -75,7 +98,9 @@ export function Button({
       {loading ? (
         <ActivityIndicator color="#fff" size="small" />
       ) : (
-        <Text style={[styles.text, { fontSize: textSizes[size] }, variantTextColor[variant] ? { color: variantTextColor[variant] } : {}, textStyle]}>
+        <Text
+          style={[styles.text, { fontSize: textSizes[size] }, variantTextStyles[variant], textStyle]}
+        >
           {title}
         </Text>
       )}
@@ -86,6 +111,14 @@ export function Button({
 const styles = StyleSheet.create({
   base: {
     borderRadius: theme.borderRadius.md,
+    overflow: 'hidden',
+  },
+  gradient: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: theme.borderRadius.md,
+  },
+  solidBase: {
     alignItems: 'center',
     justifyContent: 'center',
   },

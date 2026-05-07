@@ -1,29 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { RootNavigator } from './src/navigation';
 
 export default function App() {
-  const [status, setStatus] = useState('Chargement...');
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    try {
-      require('./src/navigation');
-      setStatus('OK');
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    }
-  }, []);
-
-  return React.createElement('div', {
-    style: {
-      background: '#0A0A0F',
-      color: '#fff',
-      padding: 20,
-      minHeight: '100vh',
-      fontFamily: 'monospace',
-    }
-  },
-    React.createElement('h2', { style: { color: '#7C3AED' } }, '⚡ SkillUp'),
-    React.createElement('p', null, status),
-    error && React.createElement('pre', { style: { color: '#ff4444', whiteSpace: 'pre-wrap' } }, error)
+  return (
+    <SafeAreaProvider>
+      <StatusBar style="light" />
+      <RootNavigator />
+    </SafeAreaProvider>
   );
 }
