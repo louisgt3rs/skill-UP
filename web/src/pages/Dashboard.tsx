@@ -7,11 +7,11 @@ import Layout from '../components/Layout';
 import { theme } from '../theme';
 
 const STATUS: Record<string, { label: string; color: string }> = {
-  pending:   { label: 'En attente',  color: theme.colors.accent },
-  active:    { label: 'En cours',    color: theme.colors.success },
-  finished:  { label: 'À confirmer', color: theme.colors.secondary },
-  completed: { label: 'Terminé',     color: theme.colors.textMuted },
-  disputed:  { label: 'Litige',      color: theme.colors.error },
+  pending:   { label: 'En attente',   color: theme.colors.accent },
+  active:    { label: 'En cours',     color: theme.colors.success },
+  finished:  { label: 'À confirmer',  color: theme.colors.secondary },
+  completed: { label: 'Terminé',      color: theme.colors.textMuted },
+  disputed:  { label: 'Litige',       color: theme.colors.error },
 };
 
 interface Props {
@@ -36,7 +36,7 @@ export default function Dashboard({ session, profile, refreshProfile }: Props) {
   const active  = matches.filter(m => ['active', 'finished'].includes(m.status));
   const history = matches.filter(m => ['completed', 'disputed'].includes(m.status));
 
-  const gameName = (slug: string) => GAMES.find(g => g.slug === slug)?.name ?? slug;
+  const gameName  = (slug: string) => GAMES.find(g => g.slug === slug)?.name ?? slug;
   const gameEmoji = (slug: string) => GAMES.find(g => g.slug === slug)?.emoji ?? '🎮';
 
   const handleAccept = async (match: Match) => {
@@ -48,88 +48,130 @@ export default function Dashboard({ session, profile, refreshProfile }: Props) {
 
   return (
     <Layout>
-      {/* Header */}
+      {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32, flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h1 style={{ color: theme.colors.text, fontSize: 26, fontWeight: 900, letterSpacing: -0.5, marginBottom: 4 }}>
+          <h1 style={{ color: theme.colors.text, fontSize: 26, fontWeight: 900, letterSpacing: -0.5, marginBottom: 6 }}>
             Bonjour, {profile?.username ?? 'Joueur'} 👋
           </h1>
           <p style={{ color: theme.colors.textMuted, fontSize: 13 }}>
-            Ton hashtag : <span style={{ color: theme.colors.primary, fontWeight: 700 }}>#{profile?.hashtag}</span>
+            Ton hashtag :{' '}
+            <span style={{
+              color: theme.colors.primaryLight, fontWeight: 700,
+              backgroundColor: `${theme.colors.primary}15`,
+              border: `1px solid ${theme.colors.primary}25`,
+              borderRadius: 6, padding: '1px 8px', fontSize: 12, letterSpacing: 1,
+            }}>#{profile?.hashtag}</span>
             {' '}— partage-le pour recevoir des défis
           </p>
         </div>
         <button
           onClick={() => navigate('/games')}
           style={{
-            backgroundColor: theme.colors.primary, border: 'none',
+            background: theme.gradients.primary, border: 'none',
             borderRadius: theme.radius.md, color: '#fff', cursor: 'pointer',
             padding: '12px 24px', fontSize: 15, fontWeight: 700,
-            boxShadow: `0 0 24px ${theme.colors.primary}40`,
+            boxShadow: theme.shadows.primary,
+            transition: 'transform 0.15s, box-shadow 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 0 48px rgba(124,58,237,0.5)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.transform = 'none';
+            e.currentTarget.style.boxShadow = theme.shadows.primary;
           }}
         >
           ⚡ Nouveau duel
         </button>
       </div>
 
-      {/* Credits + quick stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 32 }}>
+      {/* ── Stats row ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 32 }}>
+        {/* Credits card */}
         <div
           onClick={() => navigate('/wallet')}
           style={{
-            background: `linear-gradient(135deg, ${theme.colors.primary}25, ${theme.colors.surface})`,
-            border: `1.5px solid ${theme.colors.primary}35`,
-            borderRadius: 18, padding: '22px 24px', cursor: 'pointer',
+            background: `linear-gradient(135deg, ${theme.colors.primary}22, ${theme.colors.surface})`,
+            border: `1.5px solid ${theme.colors.primary}30`,
+            borderRadius: theme.radius.xl, padding: '22px 24px', cursor: 'pointer',
+            position: 'relative', overflow: 'hidden',
+            transition: 'border-color 0.2s',
           }}
+          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = `${theme.colors.primary}60`}
+          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = `${theme.colors.primary}30`}
         >
-          <p style={{ color: theme.colors.textMuted, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Crédits</p>
-          <p style={{ color: theme.colors.accent, fontSize: 30, fontWeight: 900, lineHeight: 1, marginBottom: 4 }}>
+          <div style={{
+            position: 'absolute', top: -20, right: -20,
+            width: 80, height: 80, borderRadius: '50%',
+            background: `radial-gradient(${theme.colors.primary}30, transparent)`,
+          }} />
+          <p style={{ color: theme.colors.textMuted, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Crédits</p>
+          <p style={{ color: theme.colors.accent, fontSize: 32, fontWeight: 900, lineHeight: 1, marginBottom: 4 }}>
             {(profile?.credits ?? 0).toLocaleString('fr-FR')}
           </p>
           <p style={{ color: theme.colors.textMuted, fontSize: 12 }}>≈ {((profile?.credits ?? 0) / 100).toFixed(2)} €</p>
         </div>
+
         {[
-          { label: 'Duels joués',    value: matches.filter(m => m.status !== 'pending').length },
-          { label: 'En attente',     value: pending.length,  highlight: pending.length > 0 },
-          { label: 'En cours',       value: active.length },
+          { label: 'Duels joués',  value: matches.filter(m => m.status !== 'pending').length, highlight: false },
+          { label: 'En attente',   value: pending.length, highlight: pending.length > 0 },
+          { label: 'En cours',     value: active.length, highlight: false },
         ].map(s => (
           <div key={s.label} style={{
             backgroundColor: theme.colors.surface,
-            border: `1px solid ${s.highlight ? `${theme.colors.error}50` : theme.colors.border}`,
-            borderRadius: 18, padding: '22px 24px',
+            border: `1px solid ${s.highlight ? `${theme.colors.error}40` : theme.colors.border}`,
+            borderRadius: theme.radius.xl, padding: '22px 24px',
+            position: 'relative',
           }}>
-            <p style={{ color: theme.colors.textMuted, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>{s.label}</p>
-            <p style={{ color: s.highlight ? theme.colors.error : theme.colors.text, fontSize: 30, fontWeight: 900 }}>{s.value}</p>
+            {s.highlight && (
+              <span style={{
+                position: 'absolute', top: 14, right: 14,
+                width: 8, height: 8, borderRadius: '50%',
+                backgroundColor: theme.colors.error,
+                boxShadow: `0 0 8px ${theme.colors.error}`,
+              }} />
+            )}
+            <p style={{ color: theme.colors.textMuted, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>{s.label}</p>
+            <p style={{ color: s.highlight ? theme.colors.error : theme.colors.text, fontSize: 32, fontWeight: 900 }}>{s.value}</p>
           </div>
         ))}
       </div>
 
-      {/* Pending challenges */}
+      {/* ── Pending challenges ── */}
       {pending.length > 0 && (
         <section style={{ marginBottom: 32 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-            <h2 style={{ color: theme.colors.text, fontWeight: 700, fontSize: 16 }}>Défis reçus</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <h2 style={{ color: theme.colors.text, fontWeight: 800, fontSize: 16 }}>Défis reçus</h2>
             <span style={{
-              backgroundColor: theme.colors.error, color: '#fff',
-              fontSize: 11, fontWeight: 800,
-              borderRadius: theme.radius.full, padding: '2px 8px',
+              background: theme.gradients.primary, color: '#fff',
+              fontSize: 11, fontWeight: 900,
+              borderRadius: theme.radius.full, padding: '2px 9px',
+              boxShadow: `0 0 12px ${theme.colors.primary}60`,
             }}>{pending.length}</span>
           </div>
           {pending.map(match => (
             <div key={match.id} style={{
               backgroundColor: theme.colors.surface,
-              border: `1.5px solid ${theme.colors.accent}40`,
-              borderRadius: 16, padding: '18px 22px', marginBottom: 10,
+              border: `1.5px solid ${theme.colors.accent}30`,
+              borderRadius: theme.radius.xl, padding: '18px 22px', marginBottom: 10,
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
+              background: `linear-gradient(135deg, ${theme.colors.accent}06, ${theme.colors.surface})`,
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: 28 }}>{gameEmoji(match.game)}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: 14, fontSize: 26,
+                  backgroundColor: `${theme.colors.accent}15`,
+                  border: `1px solid ${theme.colors.accent}25`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>{gameEmoji(match.game)}</div>
                 <div>
-                  <p style={{ color: theme.colors.text, fontWeight: 700 }}>{gameName(match.game)}</p>
-                  <p style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+                  <p style={{ color: theme.colors.text, fontWeight: 700, fontSize: 15 }}>{gameName(match.game)}</p>
+                  <p style={{ color: theme.colors.textSecondary, fontSize: 13, marginTop: 2 }}>
                     De <span style={{ color: theme.colors.primary, fontWeight: 700 }}>#{match.challenger?.hashtag}</span>
-                    {' '}· Mise : <span style={{ color: theme.colors.accent, fontWeight: 700 }}>{match.wager} cr</span>
-                    {' '}({(match.wager / 100).toFixed(2)} €)
+                    {' '}· <span style={{ color: theme.colors.accent, fontWeight: 700 }}>{match.wager} cr</span>
+                    {' '}<span style={{ color: theme.colors.textMuted }}>({(match.wager / 100).toFixed(2)} €)</span>
                   </p>
                 </div>
               </div>
@@ -138,8 +180,17 @@ export default function Dashboard({ session, profile, refreshProfile }: Props) {
                   onClick={() => declineMatch(match.id).then(load)}
                   style={{
                     background: 'none', border: `1px solid ${theme.colors.border}`,
-                    borderRadius: theme.radius.md, color: theme.colors.textSecondary,
-                    cursor: 'pointer', padding: '8px 16px', fontSize: 13, fontWeight: 500,
+                    borderRadius: theme.radius.md, color: theme.colors.textMuted,
+                    cursor: 'pointer', padding: '9px 18px', fontSize: 13,
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = theme.colors.error;
+                    e.currentTarget.style.color = theme.colors.error;
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = theme.colors.border;
+                    e.currentTarget.style.color = theme.colors.textMuted;
                   }}
                 >Refuser</button>
                 <button
@@ -147,19 +198,20 @@ export default function Dashboard({ session, profile, refreshProfile }: Props) {
                   style={{
                     backgroundColor: theme.colors.success, border: 'none',
                     borderRadius: theme.radius.md, color: '#fff',
-                    cursor: 'pointer', padding: '8px 22px', fontSize: 13, fontWeight: 700,
+                    cursor: 'pointer', padding: '9px 22px', fontSize: 13, fontWeight: 700,
+                    boxShadow: `0 0 16px ${theme.colors.success}40`,
                   }}
-                >Accepter ✓</button>
+                >✓ Accepter</button>
               </div>
             </div>
           ))}
         </section>
       )}
 
-      {/* Active */}
+      {/* ── Active matches ── */}
       {active.length > 0 && (
         <section style={{ marginBottom: 32 }}>
-          <h2 style={{ color: theme.colors.text, fontWeight: 700, fontSize: 16, marginBottom: 14 }}>Duels en cours</h2>
+          <h2 style={{ color: theme.colors.text, fontWeight: 800, fontSize: 16, marginBottom: 16 }}>Duels en cours</h2>
           {active.map(match => {
             const isChallenger = match.challenger_id === session.user.id;
             const opponent = isChallenger ? match.opponent : match.challenger;
@@ -171,30 +223,52 @@ export default function Dashboard({ session, profile, refreshProfile }: Props) {
                 style={{
                   backgroundColor: theme.colors.surface,
                   border: `1px solid ${theme.colors.border}`,
-                  borderRadius: 16, padding: '16px 22px', marginBottom: 10,
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  transition: 'border-color 0.2s',
+                  borderRadius: theme.radius.xl, padding: '16px 22px', marginBottom: 10,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center',
+                  justifyContent: 'space-between', gap: 12,
+                  transition: 'border-color 0.2s, background-color 0.2s',
                 }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = theme.colors.primary)}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = theme.colors.border)}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLDivElement).style.borderColor = theme.colors.primary + '60';
+                  (e.currentTarget as HTMLDivElement).style.backgroundColor = theme.colors.surfaceHigh;
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLDivElement).style.borderColor = theme.colors.border;
+                  (e.currentTarget as HTMLDivElement).style.backgroundColor = theme.colors.surface;
+                }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 26 }}>{gameEmoji(match.game)}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 12, fontSize: 22,
+                    backgroundColor: theme.colors.surfaceHigh,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>{gameEmoji(match.game)}</div>
                   <div>
                     <p style={{ color: theme.colors.text, fontWeight: 700 }}>{gameName(match.game)}</p>
-                    <p style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
-                      vs <span style={{ color: theme.colors.primaryLight }}>#{opponent?.hashtag}</span>
-                      {' '}· <span style={{ color: theme.colors.accent }}>{match.wager} cr</span>
+                    <p style={{ color: theme.colors.textSecondary, fontSize: 13, marginTop: 2 }}>
+                      vs{' '}
+                      <span style={{ color: theme.colors.primaryLight, fontWeight: 600 }}>#{opponent?.hashtag}</span>
+                      {' '}· <span style={{ color: theme.colors.accent, fontWeight: 600 }}>{match.wager} cr</span>
                     </p>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {match.status === 'active' && (
+                    <span style={{
+                      width: 7, height: 7, borderRadius: '50%',
+                      backgroundColor: theme.colors.success,
+                      boxShadow: `0 0 8px ${theme.colors.success}`,
+                      display: 'inline-block',
+                    }} />
+                  )}
                   <span style={{
-                    backgroundColor: `${s.color}20`, color: s.color,
-                    border: `1px solid ${s.color}40`,
-                    borderRadius: theme.radius.full, padding: '4px 12px', fontSize: 12, fontWeight: 600,
+                    backgroundColor: `${s.color}18`,
+                    color: s.color,
+                    border: `1px solid ${s.color}35`,
+                    borderRadius: theme.radius.full, padding: '4px 12px',
+                    fontSize: 12, fontWeight: 600,
                   }}>{s.label}</span>
-                  <span style={{ color: theme.colors.textMuted }}>→</span>
+                  <span style={{ color: theme.colors.textMuted, fontSize: 16 }}>›</span>
                 </div>
               </div>
             );
@@ -202,43 +276,58 @@ export default function Dashboard({ session, profile, refreshProfile }: Props) {
         </section>
       )}
 
-      {/* Empty */}
+      {/* ── Empty state ── */}
       {!loading && matches.length === 0 && (
         <div style={{
-          textAlign: 'center', padding: '64px 24px',
-          backgroundColor: theme.colors.surface,
+          textAlign: 'center', padding: '72px 24px',
+          background: `linear-gradient(135deg, ${theme.colors.surface}, ${theme.colors.background})`,
           border: `1px solid ${theme.colors.border}`,
-          borderRadius: 20,
+          borderRadius: theme.radius.xxl,
         }}>
-          <div style={{ fontSize: 52, marginBottom: 16 }}>🎮</div>
-          <h3 style={{ color: theme.colors.text, fontWeight: 700, fontSize: 18, marginBottom: 8 }}>Aucun duel pour l'instant</h3>
-          <p style={{ color: theme.colors.textSecondary, fontSize: 14, marginBottom: 24 }}>
-            Lance ton premier défi et commence à gagner des crédits.
+          <div style={{
+            width: 80, height: 80, borderRadius: '50%', fontSize: 36,
+            background: `${theme.colors.primary}15`,
+            border: `1.5px solid ${theme.colors.primary}25`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 20px',
+          }}>🎮</div>
+          <h3 style={{ color: theme.colors.text, fontWeight: 800, fontSize: 20, marginBottom: 10 }}>Aucun duel pour l'instant</h3>
+          <p style={{ color: theme.colors.textSecondary, fontSize: 14, marginBottom: 28, maxWidth: 340, margin: '0 auto 28px' }}>
+            Lance ton premier défi et commence à montrer ce que tu vaux.
           </p>
           <button onClick={() => navigate('/games')} style={{
-            backgroundColor: theme.colors.primary, border: 'none',
+            background: theme.gradients.primary, border: 'none',
             borderRadius: theme.radius.md, color: '#fff',
-            cursor: 'pointer', padding: '12px 28px', fontSize: 15, fontWeight: 700,
-          }}>Choisir un jeu</button>
+            cursor: 'pointer', padding: '13px 32px', fontSize: 15, fontWeight: 700,
+            boxShadow: theme.shadows.primary,
+          }}>⚡ Choisir un jeu</button>
         </div>
       )}
 
-      {/* History */}
+      {/* ── History ── */}
       {history.length > 0 && (
-        <section>
-          <h2 style={{ color: theme.colors.text, fontWeight: 700, fontSize: 16, marginBottom: 14 }}>Historique</h2>
+        <section style={{ marginTop: active.length > 0 || pending.length > 0 ? 0 : 0 }}>
+          <h2 style={{ color: theme.colors.text, fontWeight: 800, fontSize: 16, marginBottom: 16 }}>Historique</h2>
           {history.slice(0, 10).map(match => {
             const won = match.winner_id === session.user.id;
             const isChallenger = match.challenger_id === session.user.id;
             const opponent = isChallenger ? match.opponent : match.challenger;
             return (
-              <div key={match.id} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                backgroundColor: theme.colors.surface,
-                border: `1px solid ${theme.colors.border}`,
-                borderRadius: 12, padding: '12px 20px', marginBottom: 8, opacity: 0.85,
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div
+                key={match.id}
+                onClick={() => navigate(`/match/${match.id}`)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  backgroundColor: theme.colors.surface,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: theme.radius.lg, padding: '12px 20px', marginBottom: 8,
+                  cursor: 'pointer', opacity: 0.85,
+                  transition: 'opacity 0.15s',
+                }}
+                onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.opacity = '1'}
+                onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.opacity = '0.85'}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ fontSize: 20 }}>{gameEmoji(match.game)}</span>
                   <div>
                     <p style={{ color: theme.colors.text, fontWeight: 600, fontSize: 14 }}>{gameName(match.game)}</p>
@@ -246,7 +335,7 @@ export default function Dashboard({ session, profile, refreshProfile }: Props) {
                   </div>
                 </div>
                 <p style={{
-                  fontWeight: 800, fontSize: 15,
+                  fontWeight: 800, fontSize: 14,
                   color: match.status === 'disputed' ? theme.colors.error : won ? theme.colors.success : theme.colors.error,
                 }}>
                   {match.status === 'disputed' ? '⚖️ Litige' : won ? `+${match.wager} cr` : `-${match.wager} cr`}
