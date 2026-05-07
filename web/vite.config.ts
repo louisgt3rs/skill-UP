@@ -10,5 +10,8 @@ export default defineConfig({
     'process.env.SUPABASE_ANON_KEY': JSON.stringify(
       process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || ''
     ),
+    'process.env.DISCORD_CLIENT_ID': JSON.stringify(
+      process.env.DISCORD_CLIENT_ID || ''
+    ),
   },
 });
