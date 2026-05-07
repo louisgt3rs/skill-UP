@@ -1,0 +1,20 @@
+export const theme = {
+  colors: {
+    background: '#0A0A0F',
+    surface: '#12121A',
+    surfaceHigh: '#1E1E2E',
+    primary: '#7C3AED',
+    primaryDark: '#5B21B6',
+    primaryLight: '#A78BFA',
+    secondary: '#3B82F6',
+    accent: '#F59E0B',
+    success: '#10B981',
+    error: '#EF4444',
+    text: '#F9FAFB',
+    textSecondary: '#9CA3AF',
+    textMuted: '#4B5563',
+    border: '#1F2937',
+    borderLight: '#374151',
+  },
+  radius: { sm: 8, md: 12, lg: 16, full: 999 },
+};
