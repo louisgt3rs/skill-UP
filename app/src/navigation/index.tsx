@@ -1,8 +1,7 @@
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
 import { theme } from '../theme';
@@ -17,63 +16,6 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { RootStackParamList } from '../types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator();
-
-function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    Home: '🏠',
-    Create: '➕',
-    Profile: '👤',
-  };
-  return (
-    <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>{icons[name]}</Text>
-  );
-}
-
-function MainTabs() {
-  return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: theme.colors.surface,
-          borderTopColor: theme.colors.border,
-          paddingBottom: 6,
-          paddingTop: 6,
-          height: 64,
-        },
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.textSecondary,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
-      }}
-    >
-      <Tab.Screen
-        name="HomeTab"
-        component={HomeScreen}
-        options={{
-          tabBarLabel: 'Home',
-          tabBarIcon: ({ focused }) => <TabIcon name="Home" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="CreateMatch"
-        component={CreateMatchScreen}
-        options={{
-          tabBarLabel: 'Create',
-          tabBarIcon: ({ focused }) => <TabIcon name="Create" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="ProfileTab"
-        component={ProfileScreen}
-        options={{
-          tabBarLabel: 'Profile',
-          tabBarIcon: ({ focused }) => <TabIcon name="Profile" focused={focused} />,
-        }}
-      />
-    </Tab.Navigator>
-  );
-}
 
 export function RootNavigator() {
   const { session, loading, setSession } = useAuthStore();
@@ -111,17 +53,11 @@ export function RootNavigator() {
           </>
         ) : (
           <>
-            <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
-            <Stack.Screen
-              name="MatchDetail"
-              component={MatchDetailScreen}
-              options={{ title: 'Match Details' }}
-            />
-            <Stack.Screen
-              name="SubmitResult"
-              component={SubmitResultScreen}
-              options={{ title: 'Submit Result', presentation: 'modal' }}
-            />
+            <Stack.Screen name="Main" component={HomeScreen} options={{ title: 'SkillUp ⚡' }} />
+            <Stack.Screen name="CreateMatch" component={CreateMatchScreen} options={{ title: 'Create Match' }} />
+            <Stack.Screen name="ProfileTab" component={ProfileScreen} options={{ title: 'Profile' }} />
+            <Stack.Screen name="MatchDetail" component={MatchDetailScreen} options={{ title: 'Match Details' }} />
+            <Stack.Screen name="SubmitResult" component={SubmitResultScreen} options={{ title: 'Submit Result' }} />
           </>
         )}
       </Stack.Navigator>
