@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "SkillUp",
+    "slug": "skillup",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.skillup.app"
+    },
+    "android": {
+      "package": "com.skillup.app"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SkillUp needs access to your photos to upload match proof.",
+          "cameraPermission": "SkillUp needs access to your camera to capture match proof."
+        }
+      ]
+    ],
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
