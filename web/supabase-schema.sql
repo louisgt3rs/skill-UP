@@ -1,15 +1,18 @@
 -- =============================================
--- SkillUp — Schéma Supabase
+-- SkillUp — Schéma Supabase complet
 -- Colle ce SQL dans : Supabase > SQL Editor > New Query
 -- =============================================
 
--- Profiles
+-- ── Profiles ──────────────────────────────────────────────
 create table if not exists public.profiles (
   id                  uuid references auth.users(id) on delete cascade primary key,
   username            text unique not null,
   hashtag             text unique not null,
   credits             integer not null default 100,
-  -- Discord OAuth
+  is_admin            boolean not null default false,
+  wins                integer not null default 0,
+  losses              integer not null default 0,
+  win_streak          integer not null default 0,
   discord_id          text unique,
   discord_username    text,
   discord_avatar      text,
@@ -17,7 +20,89 @@ create table if not exists public.profiles (
   created_at          timestamptz default now()
 );
 
--- Matches
+-- ── Games ─────────────────────────────────────────────────
+create table if not exists public.games (
+  id          uuid default gen_random_uuid() primary key,
+  slug        text unique not null,
+  name        text not null,
+  emoji       text not null default '🎮',
+  description text not null default '',
+  rules       text not null default '',
+  platform    text not null default 'Mobile',
+  available   boolean not null default false,
+  color       text not null default '#7C3AED',
+  bg          text not null default '#0D0A1F',
+  image_url   text,
+  sort_order  integer not null default 0,
+  created_at  timestamptz default now(),
+  updated_at  timestamptz default now()
+);
+
+-- Seed games (idempotent)
+insert into public.games (slug, name, emoji, description, rules, platform, available, color, bg, sort_order) values
+(
+  'brawl-stars', 'Brawl Stars', '🌟',
+  'Duels 1v1 en mode Showdown ou Duel. Le jeu de baston mobile le plus populaire.',
+  'Mode : Showdown 1v1 ou Duel
+• Chaque joueur choisit son Brawler librement
+• Format : meilleur sur 3 manches (First to 2)
+• Screenshot du résultat final obligatoire après chaque manche
+• En cas de déconnexion involontaire : la manche est rejouée
+• Utilisation de bugs / glitchs = défaite immédiate',
+  'Mobile', true, '#FFDE59', '#1A1200', 1
+),
+(
+  'clash-royale', 'Clash Royale',  '👑',
+  'Batailles de cartes stratégiques en 1v1. Détruisez la tour adverse.',
+  'Format : Best of 3 (premier à 2 victoires)
+• Deck libre — aucune restriction de cartes
+• Les 2 joueurs s''échangent leur tag in-game pour l''invitation
+• Screenshot du score final (couronnes + temps) obligatoire
+• Abandon = défaite',
+  'Mobile', false, '#60A5FA', '#0A1520', 2
+),
+(
+  'fc-mobile', 'FC Mobile', '⚽',
+  'Football 1v1 sur mobile. Montrez votre niveau tactique.',
+  'Format : 1 match complet
+• Paramètres : durée 6 min, difficulté Légendaire
+• Les deux joueurs s''envoient une demande d''ami avant le match
+• Screenshot du score final obligatoire
+• Prolongations et tirs au but si égalité à la fin du temps réglementaire',
+  'Mobile', false, '#34D399', '#001A0A', 3
+),
+(
+  'fortnite', 'Fortnite', '🎯',
+  'Battle Royale — kills et placement. Prouvez que vous êtes le meilleur.',
+  'Format : 1 partie en solo ou 1v1 box fight (à définir lors du défi)
+• Mode Box Fight 1v1 : le joueur avec le plus d''éliminations gagne
+• Mode BR Solo : kills comptés, en cas d''égalité le mieux classé l''emporte
+• Stream ou enregistrement vidéo fortement recommandé comme preuve',
+  'PC / Console', false, '#A78BFA', '#0D0A1F', 4
+),
+(
+  'rocket-league', 'Rocket League', '🚀',
+  'Football avec des voitures en 1v1. Précision et réflexes au rendez-vous.',
+  'Format : 1 match (5 minutes) en mode 1v1
+• Paramètres par défaut Rocket League ranked
+• Les deux joueurs jouent via le système de défi privé in-game
+• Screenshot du score final avec pseudo visible obligatoire
+• Prolongation si égalité (règle standard)',
+  'PC / Console', false, '#F97316', '#1A0800', 5
+),
+(
+  'ea-fc', 'EA FC 25', '🏟️',
+  'Football sur PC / Console. Ultimate Team en 1v1.',
+  'Format : 1 match Ultimate Team complet
+• Paramètres : durée 6 min, accélération de sprint normale
+• Invitation via EA ID (partagez votre EA ID dans le chat du duel)
+• Screenshot du score final obligatoire
+• Pas de restrictions de notation d''équipe sauf accord préalable',
+  'PC / Console', false, '#22D3EE', '#001520', 6
+)
+on conflict (slug) do nothing;
+
+-- ── Matches ───────────────────────────────────────────────
 create table if not exists public.matches (
   id                 uuid default gen_random_uuid() primary key,
   game               text not null,
@@ -32,7 +117,7 @@ create table if not exists public.matches (
   created_at         timestamptz default now()
 );
 
--- Messages
+-- ── Messages ──────────────────────────────────────────────
 create table if not exists public.messages (
   id         uuid default gen_random_uuid() primary key,
   match_id   uuid references public.matches(id) on delete cascade not null,
@@ -41,32 +126,35 @@ create table if not exists public.messages (
   created_at timestamptz default now()
 );
 
--- Transactions
+-- ── Transactions ──────────────────────────────────────────
 create table if not exists public.transactions (
   id          uuid default gen_random_uuid() primary key,
   user_id     uuid references public.profiles(id) on delete cascade not null,
   type        text not null check (type in ('deposit','withdrawal','match_wager','match_win','match_loss','refund')),
   amount      integer not null,
   description text,
-  match_id    uuid references public.matches(id),
+  status      text not null default 'completed' check (status in ('pending','completed','failed')),
   created_at  timestamptz default now()
 );
 
--- Withdrawal requests
+-- ── Withdrawal requests ───────────────────────────────────
 create table if not exists public.withdrawal_requests (
-  id           uuid default gen_random_uuid() primary key,
-  user_id      uuid references public.profiles(id) on delete cascade not null,
-  amount       integer not null check (amount > 0),
-  full_name    text not null,
-  iban         text not null,
-  status       text not null default 'pending' check (status in ('pending','approved','rejected')),
-  admin_note   text,
-  created_at   timestamptz default now()
+  id              uuid default gen_random_uuid() primary key,
+  user_id         uuid references public.profiles(id) on delete cascade not null,
+  amount_credits  integer not null check (amount_credits > 0),
+  amount_eur      numeric(10,2) not null,
+  full_name       text not null,
+  iban            text,
+  method          text not null default 'bank_transfer',
+  status          text not null default 'pending' check (status in ('pending','approved','rejected')),
+  admin_note      text,
+  created_at      timestamptz default now()
 );
 
--- ── Row Level Security ────────────────────────────────────────
+-- ── Row Level Security ────────────────────────────────────
 
 alter table public.profiles            enable row level security;
+alter table public.games               enable row level security;
 alter table public.matches             enable row level security;
 alter table public.messages            enable row level security;
 alter table public.transactions        enable row level security;
@@ -77,9 +165,21 @@ create policy "profiles_select" on public.profiles for select using (true);
 create policy "profiles_insert" on public.profiles for insert with check (auth.uid() = id);
 create policy "profiles_update" on public.profiles for update using (auth.uid() = id);
 
--- Matches
+-- Games (public read, admin write)
+create policy "games_select" on public.games for select using (true);
+create policy "games_admin_insert" on public.games for insert with check (
+  exists (select 1 from public.profiles where id = auth.uid() and is_admin = true)
+);
+create policy "games_admin_update" on public.games for update using (
+  exists (select 1 from public.profiles where id = auth.uid() and is_admin = true)
+);
+
+-- Matches (user sees own, admin sees all)
 create policy "matches_select" on public.matches for select using (
   auth.uid() = challenger_id or auth.uid() = opponent_id
+);
+create policy "matches_admin_select" on public.matches for select using (
+  exists (select 1 from public.profiles where id = auth.uid() and is_admin = true)
 );
 create policy "matches_insert" on public.matches for insert with check (auth.uid() = challenger_id);
 create policy "matches_update" on public.matches for update using (
@@ -103,14 +203,31 @@ create policy "messages_insert" on public.messages for insert with check (
   )
 );
 
--- Transactions (each user sees only their own)
+-- Transactions (user sees own, admin sees all)
 create policy "transactions_select" on public.transactions for select using (auth.uid() = user_id);
+create policy "transactions_admin_select" on public.transactions for select using (
+  exists (select 1 from public.profiles where id = auth.uid() and is_admin = true)
+);
 create policy "transactions_insert" on public.transactions for insert with check (auth.uid() = user_id);
 
--- Withdrawal requests (each user sees only their own)
+-- Withdrawal requests (user sees own, admin sees all + can update)
 create policy "withdrawals_select" on public.withdrawal_requests for select using (auth.uid() = user_id);
+create policy "withdrawals_admin_select" on public.withdrawal_requests for select using (
+  exists (select 1 from public.profiles where id = auth.uid() and is_admin = true)
+);
 create policy "withdrawals_insert" on public.withdrawal_requests for insert with check (auth.uid() = user_id);
+create policy "withdrawals_admin_update" on public.withdrawal_requests for update using (
+  exists (select 1 from public.profiles where id = auth.uid() and is_admin = true)
+);
 
--- ── Realtime ──────────────────────────────────────────────────
+-- ── Realtime ──────────────────────────────────────────────
 alter publication supabase_realtime add table public.messages;
 alter publication supabase_realtime add table public.matches;
+
+-- ── Pour te donner les droits admin ───────────────────────
+-- Remplace TONHASHTAG par ton hashtag (sans le #) et exécute :
+-- update public.profiles set is_admin = true where hashtag = 'TONHASHTAG';
+
+-- ── Supabase Storage ──────────────────────────────────────
+-- Crée un bucket public nommé "game-images" dans :
+-- Supabase > Storage > New bucket > Name: game-images > Public: ON

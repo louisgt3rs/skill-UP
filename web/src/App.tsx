@@ -12,9 +12,11 @@ import Signup      from './pages/Signup';
 import HowItWorks  from './pages/HowItWorks';
 import Dashboard   from './pages/Dashboard';
 import Games       from './pages/Games';
+import GameDetail  from './pages/GameDetail';
 import MatchPage   from './pages/Match';
 import ProfilePage from './pages/Profile';
 import Wallet      from './pages/Wallet';
+import Admin       from './pages/Admin';
 
 function Loader() {
   return (
@@ -57,11 +59,13 @@ export default function App() {
         <Route path="/signup"        element={!session ? <Signup /> : <Navigate to="/dashboard" replace />} />
 
         {/* Protected */}
-        <Route path="/dashboard" element={session ? <Dashboard {...protectedProps} /> : <Navigate to="/login" replace />} />
-        <Route path="/games"     element={session ? <Games     {...protectedProps} /> : <Navigate to="/login" replace />} />
-        <Route path="/match/:id" element={session ? <MatchPage {...protectedProps} /> : <Navigate to="/login" replace />} />
-        <Route path="/profile"   element={session ? <ProfilePage session={session!} profile={profile} /> : <Navigate to="/login" replace />} />
-        <Route path="/wallet"    element={session ? <Wallet    {...protectedProps} /> : <Navigate to="/login" replace />} />
+        <Route path="/dashboard"   element={session ? <Dashboard  {...protectedProps} /> : <Navigate to="/login" replace />} />
+        <Route path="/games"       element={session ? <Games /> : <Navigate to="/login" replace />} />
+        <Route path="/games/:slug" element={session ? <GameDetail {...protectedProps} /> : <Navigate to="/login" replace />} />
+        <Route path="/match/:id"   element={session ? <MatchPage  {...protectedProps} /> : <Navigate to="/login" replace />} />
+        <Route path="/profile"     element={session ? <ProfilePage session={session!} profile={profile} /> : <Navigate to="/login" replace />} />
+        <Route path="/wallet"      element={session ? <Wallet     {...protectedProps} /> : <Navigate to="/login" replace />} />
+        <Route path="/admin"       element={session ? <Admin session={session!} profile={profile} /> : <Navigate to="/login" replace />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

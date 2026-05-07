@@ -3,6 +3,7 @@ export interface Profile {
   username: string;
   hashtag: string;
   credits: number;
+  is_admin?: boolean;
   wins: number;
   losses: number;
   win_streak: number;
@@ -62,6 +63,7 @@ export interface WithdrawalRequest {
 // ── Games ─────────────────────────────────────────────────
 
 export interface GameDef {
+  id?: string;
   slug: string;
   name: string;
   emoji: string;
@@ -71,6 +73,8 @@ export interface GameDef {
   rules: string;
   platform: string;
   available: boolean;
+  image_url?: string;
+  sort_order?: number;
 }
 
 export const GAMES: GameDef[] = [

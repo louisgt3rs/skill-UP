@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Profile, Match, Message, Transaction, WithdrawalRequest } from '../types';
+import { Profile, Match, Message, Transaction, WithdrawalRequest, GameDef, GAMES } from '../types';
 
 function genHashtag(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -210,4 +210,62 @@ export async function unlinkDiscord(userId: string): Promise<void> {
     discord_id: null, discord_username: null,
     discord_avatar: null, discord_linked_at: null,
   }).eq('id', userId);
+}
+
+// ── Games (admin-managed) ─────────────────────────────────
+
+export async function getGames(): Promise<GameDef[]> {
+  const { data, error } = await supabase
+    .from('games').select('*').order('sort_order', { ascending: true });
+  if (error || !data || data.length === 0) return GAMES;
+  return data;
+}
+
+export async function getGameBySlug(slug: string): Promise<GameDef | null> {
+  const { data } = await supabase.from('games').select('*').eq('slug', slug).single();
+  if (!data) return GAMES.find(g => g.slug === slug) ?? null;
+  return data;
+}
+
+export async function updateGame(gameId: string, updates: Partial<GameDef>): Promise<void> {
+  const { id: _id, ...rest } = updates as GameDef;
+  await supabase.from('games').update({ ...rest, updated_at: new Date().toISOString() }).eq('id', gameId);
+}
+
+export async function uploadGameImage(slug: string, file: File): Promise<string> {
+  const ext = file.name.split('.').pop() ?? 'jpg';
+  const path = `${slug}.${ext}`;
+  await supabase.storage.from('game-images').upload(path, file, { upsert: true });
+  const { data } = supabase.storage.from('game-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+// ── Admin ─────────────────────────────────────────────────
+
+export async function getAdminStats(): Promise<{ totalUsers: number; activeMatches: number; pendingWithdrawals: number }> {
+  const [usersRes, matchesRes, withdrawalsRes] = await Promise.all([
+    supabase.from('profiles').select('id', { count: 'exact', head: true }),
+    supabase.from('matches').select('id', { count: 'exact', head: true }).in('status', ['active', 'finished']),
+    supabase.from('withdrawal_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+  ]);
+  return {
+    totalUsers: usersRes.count ?? 0,
+    activeMatches: matchesRes.count ?? 0,
+    pendingWithdrawals: withdrawalsRes.count ?? 0,
+  };
+}
+
+export async function getAllWithdrawalRequests(): Promise<(WithdrawalRequest & { profile?: Profile })[]> {
+  const { data } = await supabase
+    .from('withdrawal_requests')
+    .select('*, profile:profiles(*)')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  return data ?? [];
+}
+
+export async function updateWithdrawalStatus(
+  id: string, status: 'approved' | 'rejected', note?: string
+): Promise<void> {
+  await supabase.from('withdrawal_requests').update({ status, admin_note: note ?? null }).eq('id', id);
 }
