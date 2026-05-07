@@ -43,18 +43,6 @@ export default function Admin({ profile }: Props) {
 
   useEffect(() => { load(); }, []);
 
-  if (!profile?.is_admin) {
-    return (
-      <Layout>
-        <div style={{ textAlign: 'center', padding: '80px 24px' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
-          <h2 style={{ color: theme.colors.error, fontWeight: 800 }}>Accès refusé</h2>
-          <p style={{ color: theme.colors.textMuted, marginTop: 8 }}>Cette page est réservée aux administrateurs.</p>
-        </div>
-      </Layout>
-    );
-  }
-
   const selectGame = (game: GameDef) => {
     setSelectedGame(game);
     setEditForm({ ...game });
