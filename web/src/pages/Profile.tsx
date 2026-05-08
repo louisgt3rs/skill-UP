@@ -167,10 +167,11 @@ export default function ProfilePage({ session, profile, refreshProfile }: Props)
       refreshProfile?.();
       setTimeout(() => setTagSuccess(false), 4000);
     } catch (e: any) {
-      if (e?.message?.includes('unique') || e?.code === '23505') {
+      console.error('updateHashtag error:', e);
+      if (e?.code === '23505' || e?.message?.toLowerCase().includes('unique')) {
         setTagError('Ce hashtag est déjà pris par un autre joueur.');
       } else {
-        setTagError('Erreur lors de la sauvegarde. Réessaie.');
+        setTagError(`Erreur : ${e?.message || e?.code || 'inconnue'}`);
       }
     } finally {
       setTagSaving(false);

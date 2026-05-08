@@ -49,14 +49,11 @@ export async function completeOnboarding(userId: string, hashtag: string, userna
 
 export async function updateHashtag(userId: string, hashtag: string): Promise<void> {
   const clean = hashtag.toUpperCase();
-  const { error, data } = await supabase
+  const { error } = await supabase
     .from('profiles')
     .update({ hashtag: clean })
-    .eq('id', userId)
-    .select('id')
-    .single();
+    .eq('id', userId);
   if (error) throw error;
-  if (!data) throw new Error('update_failed');
 }
 
 export async function updateCredits(userId: string, delta: number): Promise<void> {
