@@ -152,6 +152,40 @@ create table if not exists public.withdrawal_requests (
   created_at      timestamptz default now()
 );
 
+-- ── Trigger : auto-créer un profil au signup ─────────────
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer as $$
+declare
+  v_tag text;
+  v_chars text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  i int;
+begin
+  -- génère un hashtag unique de 5 chars
+  loop
+    v_tag := '';
+    for i in 1..5 loop
+      v_tag := v_tag || substr(v_chars, floor(random() * length(v_chars) + 1)::int, 1);
+    end loop;
+    exit when not exists (select 1 from public.profiles where hashtag = v_tag);
+  end loop;
+
+  insert into public.profiles (id, username, hashtag, credits, wins, losses, win_streak, onboarding_done)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
+    v_tag,
+    100, 0, 0, 0, false
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
 -- ── Row Level Security ────────────────────────────────────
 
 alter table public.profiles            enable row level security;
@@ -162,11 +196,18 @@ alter table public.transactions        enable row level security;
 alter table public.withdrawal_requests enable row level security;
 
 -- Profiles
+drop policy if exists "profiles_select"        on public.profiles;
+drop policy if exists "profiles_insert"        on public.profiles;
+drop policy if exists "profiles_update"        on public.profiles;
 create policy "profiles_select" on public.profiles for select using (true);
 create policy "profiles_insert" on public.profiles for insert with check (auth.uid() = id);
-create policy "profiles_update" on public.profiles for update using (auth.uid() = id);
+create policy "profiles_update" on public.profiles for update
+  using (auth.uid() = id) with check (auth.uid() = id);
 
 -- Games (public read, admin write)
+drop policy if exists "games_select"        on public.games;
+drop policy if exists "games_admin_insert"  on public.games;
+drop policy if exists "games_admin_update"  on public.games;
 create policy "games_select" on public.games for select using (true);
 create policy "games_admin_insert" on public.games for insert with check (
   exists (select 1 from public.profiles where id = auth.uid() and is_admin = true)
@@ -175,7 +216,11 @@ create policy "games_admin_update" on public.games for update using (
   exists (select 1 from public.profiles where id = auth.uid() and is_admin = true)
 );
 
--- Matches (user sees own, admin sees all)
+-- Matches
+drop policy if exists "matches_select"        on public.matches;
+drop policy if exists "matches_admin_select"  on public.matches;
+drop policy if exists "matches_insert"        on public.matches;
+drop policy if exists "matches_update"        on public.matches;
 create policy "matches_select" on public.matches for select using (
   auth.uid() = challenger_id or auth.uid() = opponent_id
 );
@@ -188,6 +233,8 @@ create policy "matches_update" on public.matches for update using (
 );
 
 -- Messages
+drop policy if exists "messages_select" on public.messages;
+drop policy if exists "messages_insert" on public.messages;
 create policy "messages_select" on public.messages for select using (
   exists (
     select 1 from public.matches m
@@ -204,14 +251,21 @@ create policy "messages_insert" on public.messages for insert with check (
   )
 );
 
--- Transactions (user sees own, admin sees all)
+-- Transactions
+drop policy if exists "transactions_select"         on public.transactions;
+drop policy if exists "transactions_admin_select"   on public.transactions;
+drop policy if exists "transactions_insert"         on public.transactions;
 create policy "transactions_select" on public.transactions for select using (auth.uid() = user_id);
 create policy "transactions_admin_select" on public.transactions for select using (
   exists (select 1 from public.profiles where id = auth.uid() and is_admin = true)
 );
 create policy "transactions_insert" on public.transactions for insert with check (auth.uid() = user_id);
 
--- Withdrawal requests (user sees own, admin sees all + can update)
+-- Withdrawal requests
+drop policy if exists "withdrawals_select"        on public.withdrawal_requests;
+drop policy if exists "withdrawals_admin_select"  on public.withdrawal_requests;
+drop policy if exists "withdrawals_insert"        on public.withdrawal_requests;
+drop policy if exists "withdrawals_admin_update"  on public.withdrawal_requests;
 create policy "withdrawals_select" on public.withdrawal_requests for select using (auth.uid() = user_id);
 create policy "withdrawals_admin_select" on public.withdrawal_requests for select using (
   exists (select 1 from public.profiles where id = auth.uid() and is_admin = true)
@@ -250,6 +304,8 @@ create table if not exists public.chat_messages (
 
 -- RLS for conversations
 alter table public.conversations enable row level security;
+drop policy if exists "conv_select" on public.conversations;
+drop policy if exists "conv_insert" on public.conversations;
 create policy "conv_select" on public.conversations for select using (
   auth.uid() = user1_id or auth.uid() = user2_id
 );
@@ -259,6 +315,9 @@ create policy "conv_insert" on public.conversations for insert with check (
 
 -- RLS for chat_messages
 alter table public.chat_messages enable row level security;
+drop policy if exists "chatmsg_select" on public.chat_messages;
+drop policy if exists "chatmsg_insert" on public.chat_messages;
+drop policy if exists "chatmsg_update" on public.chat_messages;
 create policy "chatmsg_select" on public.chat_messages for select using (
   exists (
     select 1 from public.conversations c
