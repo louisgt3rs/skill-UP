@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { useProfile } from './hooks/useProfile';
+import { Profile } from './types';
 import { theme } from './theme';
 
 import Navbar      from './components/Navbar';
@@ -17,6 +18,11 @@ import MatchPage   from './pages/Match';
 import ProfilePage from './pages/Profile';
 import Wallet      from './pages/Wallet';
 import Admin       from './pages/Admin';
+import Onboarding  from './pages/Onboarding';
+import Chat        from './pages/Chat';
+
+// Pages that should not show the navbar
+const NO_NAV_PAGES = ['/onboarding'];
 
 function Loader() {
   return (
@@ -27,6 +33,63 @@ function Loader() {
     }}>
       ⚡ SKILLUP
     </div>
+  );
+}
+
+function ConditionalNavbar({ session, profile }: { session: Session | null; profile: Profile | null }) {
+  const { pathname } = useLocation();
+  if (NO_NAV_PAGES.includes(pathname)) return null;
+  return <Navbar session={session} profile={profile} />;
+}
+
+interface AppRouterProps {
+  session: Session | null;
+  profile: Profile | null;
+  refresh: () => void;
+}
+
+function AppRouter({ session, profile, refresh }: AppRouterProps) {
+  const protectedProps = { session: session!, profile, refreshProfile: refresh };
+  const needsOnboarding = session && profile && !profile.onboarding_done;
+
+  const guard = (element: JSX.Element) => {
+    if (!session) return <Navigate to="/login" replace />;
+    if (needsOnboarding) return <Navigate to="/onboarding" replace />;
+    return element;
+  };
+
+  return (
+    <>
+      <ConditionalNavbar session={session} profile={profile} />
+      <Routes>
+        {/* Public */}
+        <Route path="/"              element={<Landing />} />
+        <Route path="/how-it-works"  element={<HowItWorks />} />
+        <Route path="/login"         element={!session ? <Login /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/signup"        element={!session ? <Signup /> : <Navigate to="/dashboard" replace />} />
+
+        {/* Onboarding */}
+        <Route path="/onboarding" element={
+          !session ? <Navigate to="/login" replace />
+          : (profile && profile.onboarding_done) ? <Navigate to="/dashboard" replace />
+          : profile ? <Onboarding {...protectedProps} />
+          : <Loader />
+        } />
+
+        {/* Protected */}
+        <Route path="/dashboard"           element={guard(<Dashboard {...protectedProps} />)} />
+        <Route path="/games"               element={guard(<Games />)} />
+        <Route path="/games/:slug"         element={guard(<GameDetail {...protectedProps} />)} />
+        <Route path="/match/:id"           element={guard(<MatchPage {...protectedProps} />)} />
+        <Route path="/profile"             element={guard(<ProfilePage session={session!} profile={profile} />)} />
+        <Route path="/wallet"              element={guard(<Wallet {...protectedProps} />)} />
+        <Route path="/admin"               element={guard(<Admin session={session!} profile={profile} />)} />
+        <Route path="/chat"                element={guard(<Chat {...protectedProps} />)} />
+        <Route path="/chat/:conversationId" element={guard(<Chat {...protectedProps} />)} />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }
 
@@ -46,29 +109,9 @@ export default function App() {
 
   if (loading) return <Loader />;
 
-  const protectedProps = { session: session!, profile, refreshProfile: refresh };
-
   return (
     <BrowserRouter>
-      <Navbar session={session} profile={profile} />
-      <Routes>
-        {/* Public */}
-        <Route path="/"              element={<Landing />} />
-        <Route path="/how-it-works"  element={<HowItWorks />} />
-        <Route path="/login"         element={!session ? <Login />  : <Navigate to="/dashboard" replace />} />
-        <Route path="/signup"        element={!session ? <Signup /> : <Navigate to="/dashboard" replace />} />
-
-        {/* Protected */}
-        <Route path="/dashboard"   element={session ? <Dashboard  {...protectedProps} /> : <Navigate to="/login" replace />} />
-        <Route path="/games"       element={session ? <Games /> : <Navigate to="/login" replace />} />
-        <Route path="/games/:slug" element={session ? <GameDetail {...protectedProps} /> : <Navigate to="/login" replace />} />
-        <Route path="/match/:id"   element={session ? <MatchPage  {...protectedProps} /> : <Navigate to="/login" replace />} />
-        <Route path="/profile"     element={session ? <ProfilePage session={session!} profile={profile} /> : <Navigate to="/login" replace />} />
-        <Route path="/wallet"      element={session ? <Wallet     {...protectedProps} /> : <Navigate to="/login" replace />} />
-        <Route path="/admin"       element={session ? <Admin session={session!} profile={profile} /> : <Navigate to="/login" replace />} />
-
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AppRouter session={session} profile={profile} refresh={refresh} />
     </BrowserRouter>
   );
 }

@@ -17,6 +17,7 @@ create table if not exists public.profiles (
   discord_username    text,
   discord_avatar      text,
   discord_linked_at   timestamptz,
+  onboarding_done     boolean not null default false,
   created_at          timestamptz default now()
 );
 
@@ -220,9 +221,75 @@ create policy "withdrawals_admin_update" on public.withdrawal_requests for updat
   exists (select 1 from public.profiles where id = auth.uid() and is_admin = true)
 );
 
+-- ── Conversations & Chat ─────────────────────────────────
+create table if not exists public.conversations (
+  id               uuid primary key default gen_random_uuid(),
+  user1_id         uuid references public.profiles(id) on delete cascade not null,
+  user2_id         uuid references public.profiles(id) on delete cascade not null,
+  last_message_at  timestamptz default now(),
+  created_at       timestamptz default now() not null
+);
+
+-- Ensures only one conversation per pair (smaller UUID first)
+create unique index if not exists conversations_pair_idx
+  on public.conversations (
+    least(user1_id::text, user2_id::text),
+    greatest(user1_id::text, user2_id::text)
+  );
+
+create table if not exists public.chat_messages (
+  id               uuid primary key default gen_random_uuid(),
+  conversation_id  uuid references public.conversations(id) on delete cascade not null,
+  sender_id        uuid references public.profiles(id) on delete cascade not null,
+  content          text not null,
+  type             text default 'text' check (type in ('text', 'duel_proposal')),
+  metadata         jsonb,
+  read_at          timestamptz,
+  created_at       timestamptz default now() not null
+);
+
+-- RLS for conversations
+alter table public.conversations enable row level security;
+create policy "conv_select" on public.conversations for select using (
+  auth.uid() = user1_id or auth.uid() = user2_id
+);
+create policy "conv_insert" on public.conversations for insert with check (
+  auth.uid() = user1_id or auth.uid() = user2_id
+);
+
+-- RLS for chat_messages
+alter table public.chat_messages enable row level security;
+create policy "chatmsg_select" on public.chat_messages for select using (
+  exists (
+    select 1 from public.conversations c
+    where c.id = conversation_id
+      and (c.user1_id = auth.uid() or c.user2_id = auth.uid())
+  )
+);
+create policy "chatmsg_insert" on public.chat_messages for insert with check (
+  auth.uid() = sender_id and
+  exists (
+    select 1 from public.conversations c
+    where c.id = conversation_id
+      and (c.user1_id = auth.uid() or c.user2_id = auth.uid())
+  )
+);
+create policy "chatmsg_update" on public.chat_messages for update using (
+  exists (
+    select 1 from public.conversations c
+    where c.id = conversation_id
+      and (c.user1_id = auth.uid() or c.user2_id = auth.uid())
+  )
+);
+
+-- ── Migration : ajoute onboarding_done si la table existe déjà ───
+alter table public.profiles add column if not exists onboarding_done boolean not null default false;
+
 -- ── Realtime ──────────────────────────────────────────────
 alter publication supabase_realtime add table public.messages;
 alter publication supabase_realtime add table public.matches;
+alter publication supabase_realtime add table public.chat_messages;
+alter publication supabase_realtime add table public.conversations;
 
 -- ── Pour te donner les droits admin ───────────────────────
 -- Remplace TONHASHTAG par ton hashtag (sans le #) et exécute :

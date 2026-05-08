@@ -5,10 +5,11 @@ import { supabase } from '../lib/supabase';
 import { Profile } from '../types';
 import { theme } from '../theme';
 
-const NAV_LINKS = [
-  { path: '/',             label: 'Accueil' },
-  { path: '/games',        label: 'Jeux' },
-  { path: '/how-it-works', label: 'Comment ça marche' },
+const NAV_LINKS: { path: string; label: string; auth: boolean }[] = [
+  { path: '/',             label: 'Accueil',           auth: false },
+  { path: '/games',        label: 'Jeux',              auth: false },
+  { path: '/how-it-works', label: 'Comment ça marche', auth: false },
+  { path: '/chat',         label: '💬 Chat',           auth: true  },
 ];
 
 interface Props {
@@ -33,7 +34,7 @@ export default function Navbar({ session, profile }: Props) {
   useEffect(() => { setOpen(false); }, [pathname]);
 
   const isActive = (path: string) =>
-    path === '/' ? pathname === '/' : pathname.startsWith(path);
+    path === '/' ? pathname === '/' : pathname === path || pathname.startsWith(path + '/');
 
   return (
     <header style={{
@@ -67,7 +68,7 @@ export default function Navbar({ session, profile }: Props) {
 
       {/* Center nav */}
       <nav style={{ display: 'flex', gap: 2 }}>
-        {NAV_LINKS.map(link => (
+        {NAV_LINKS.filter(link => !link.auth || !!session).map(link => (
           <NavBtn
             key={link.path}
             active={isActive(link.path)}

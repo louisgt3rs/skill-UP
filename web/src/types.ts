@@ -4,6 +4,7 @@ export interface Profile {
   hashtag: string;
   credits: number;
   is_admin?: boolean;
+  onboarding_done?: boolean;
   wins: number;
   losses: number;
   win_streak: number;
@@ -12,6 +13,33 @@ export interface Profile {
   discord_avatar: string | null;
   discord_linked_at: string | null;
   created_at: string;
+}
+
+export interface Conversation {
+  id: string;
+  user1_id: string;
+  user2_id: string;
+  created_at: string;
+  last_message_at: string;
+  other_user?: Profile;
+  last_message?: ChatMessage;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  content: string;
+  type: 'text' | 'duel_proposal';
+  metadata?: {
+    game?: string;
+    wager?: number;
+    status?: 'pending' | 'accepted' | 'declined';
+    match_id?: string;
+  };
+  read_at: string | null;
+  created_at: string;
+  sender?: Profile;
 }
 
 export interface Match {

@@ -1,10 +1,10 @@
 import { supabase } from './supabase';
-import { Profile, Match, Message, Transaction, WithdrawalRequest, GameDef, GAMES } from '../types';
+import { Profile, Match, Message, Transaction, WithdrawalRequest, GameDef, GAMES, Conversation, ChatMessage } from '../types';
 
 function genHashtag(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let tag = '';
-  for (let i = 0; i < 6; i++) tag += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 5; i++) tag += chars[Math.floor(Math.random() * chars.length)];
   return tag;
 }
 
@@ -32,6 +32,17 @@ export async function findByHashtag(hashtag: string): Promise<Profile | null> {
   const clean = hashtag.replace(/^#/, '').toUpperCase();
   const { data } = await supabase.from('profiles').select('*').eq('hashtag', clean).single();
   return data;
+}
+
+export async function isHashtagAvailable(hashtag: string): Promise<boolean> {
+  const clean = hashtag.toUpperCase();
+  const { data } = await supabase.from('profiles').select('id').eq('hashtag', clean).maybeSingle();
+  return !data;
+}
+
+export async function completeOnboarding(userId: string, hashtag: string, username: string): Promise<void> {
+  const clean = hashtag.toUpperCase();
+  await supabase.from('profiles').update({ hashtag: clean, username, onboarding_done: true }).eq('id', userId);
 }
 
 export async function updateCredits(userId: string, delta: number): Promise<void> {
@@ -268,4 +279,81 @@ export async function updateWithdrawalStatus(
   id: string, status: 'approved' | 'rejected', note?: string
 ): Promise<void> {
   await supabase.from('withdrawal_requests').update({ status, admin_note: note ?? null }).eq('id', id);
+}
+
+// ── Chat ──────────────────────────────────────────────────
+
+export async function getOrCreateConversation(userId: string, otherId: string): Promise<string> {
+  const [u1, u2] = [userId, otherId].sort();
+  const { data: existing } = await supabase
+    .from('conversations').select('id').eq('user1_id', u1).eq('user2_id', u2).maybeSingle();
+  if (existing) return existing.id;
+  const { data, error } = await supabase
+    .from('conversations').insert({ user1_id: u1, user2_id: u2 }).select('id').single();
+  if (error) throw error;
+  return data.id;
+}
+
+export async function getMyConversations(userId: string): Promise<Conversation[]> {
+  const { data } = await supabase
+    .from('conversations')
+    .select(`
+      *,
+      user1:profiles!user1_id(*),
+      user2:profiles!user2_id(*)
+    `)
+    .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
+    .order('last_message_at', { ascending: false });
+
+  if (!data) return [];
+  return data.map((c: any) => ({
+    ...c,
+    other_user: c.user1_id === userId ? c.user2 : c.user1,
+  }));
+}
+
+export async function getChatMessages(conversationId: string): Promise<ChatMessage[]> {
+  const { data } = await supabase
+    .from('chat_messages')
+    .select('*, sender:profiles!sender_id(*)')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true });
+  return data || [];
+}
+
+export async function sendChatMessage(
+  conversationId: string, senderId: string, content: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  await supabase.from('chat_messages').insert({
+    conversation_id: conversationId, sender_id: senderId, content, type: 'text',
+  });
+  await supabase.from('conversations').update({ last_message_at: now }).eq('id', conversationId);
+}
+
+export async function sendDuelProposal(
+  conversationId: string, senderId: string, game: string, wager: number
+): Promise<void> {
+  const now = new Date().toISOString();
+  await supabase.from('chat_messages').insert({
+    conversation_id: conversationId,
+    sender_id: senderId,
+    content: `Proposition de duel — ${game} — ${wager} cr`,
+    type: 'duel_proposal',
+    metadata: { game, wager, status: 'pending' },
+  });
+  await supabase.from('conversations').update({ last_message_at: now }).eq('id', conversationId);
+}
+
+export async function updateDuelProposalStatus(
+  messageId: string,
+  status: 'accepted' | 'declined',
+  matchId?: string
+): Promise<void> {
+  const current = await supabase
+    .from('chat_messages').select('metadata').eq('id', messageId).single();
+  const meta = current.data?.metadata ?? {};
+  await supabase.from('chat_messages').update({
+    metadata: { ...meta, status, ...(matchId ? { match_id: matchId } : {}) },
+  }).eq('id', messageId);
 }
