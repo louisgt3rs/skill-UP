@@ -81,7 +81,7 @@ function AppRouter({ session, profile, refresh }: AppRouterProps) {
         <Route path="/games"               element={guard(<Games />)} />
         <Route path="/games/:slug"         element={guard(<GameDetail {...protectedProps} />)} />
         <Route path="/match/:id"           element={guard(<MatchPage {...protectedProps} />)} />
-        <Route path="/profile"             element={guard(<ProfilePage session={session!} profile={profile} />)} />
+        <Route path="/profile"             element={guard(<ProfilePage session={session!} profile={profile} refreshProfile={refresh} />)} />
         <Route path="/wallet"              element={guard(<Wallet {...protectedProps} />)} />
         <Route path="/admin"               element={guard(<Admin session={session!} profile={profile} />)} />
         <Route path="/chat"                element={guard(<Chat {...protectedProps} />)} />

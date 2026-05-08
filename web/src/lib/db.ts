@@ -34,15 +34,23 @@ export async function findByHashtag(hashtag: string): Promise<Profile | null> {
   return data;
 }
 
-export async function isHashtagAvailable(hashtag: string): Promise<boolean> {
+export async function isHashtagAvailable(hashtag: string, excludeUserId?: string): Promise<boolean> {
   const clean = hashtag.toUpperCase();
-  const { data } = await supabase.from('profiles').select('id').eq('hashtag', clean).maybeSingle();
+  let query = supabase.from('profiles').select('id').eq('hashtag', clean);
+  if (excludeUserId) query = query.neq('id', excludeUserId);
+  const { data } = await query.maybeSingle();
   return !data;
 }
 
 export async function completeOnboarding(userId: string, hashtag: string, username: string): Promise<void> {
   const clean = hashtag.toUpperCase();
   await supabase.from('profiles').update({ hashtag: clean, username, onboarding_done: true }).eq('id', userId);
+}
+
+export async function updateHashtag(userId: string, hashtag: string): Promise<void> {
+  const clean = hashtag.toUpperCase();
+  const { error } = await supabase.from('profiles').update({ hashtag: clean }).eq('id', userId);
+  if (error) throw error;
 }
 
 export async function updateCredits(userId: string, delta: number): Promise<void> {

@@ -1,18 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { Profile, Match, BADGES, BadgeDef, computeStats, PlayerStats } from '../types';
-import { getMyMatches } from '../lib/db';
+import { getMyMatches, isHashtagAvailable, updateHashtag } from '../lib/db';
 import Layout from '../components/Layout';
 import { theme } from '../theme';
 
 interface Props {
   session: Session;
   profile: Profile | null;
+  refreshProfile?: () => void;
 }
 
-export default function ProfilePage({ session, profile }: Props) {
+export default function ProfilePage({ session, profile, refreshProfile }: Props) {
   const [matches, setMatches] = useState<Match[]>([]);
-  const [stats, setStats] = useState<PlayerStats | null>(null);
+  const [stats, setStats]     = useState<PlayerStats | null>(null);
+
+  // Hashtag editor state
+  const [editingTag, setEditingTag] = useState(false);
+  const [newTag, setNewTag]         = useState('');
+  const [tagAvail, setTagAvail]     = useState<null | boolean>(null);
+  const [tagChecking, setTagChecking] = useState(false);
+  const [tagSaving, setTagSaving]   = useState(false);
+  const [tagError, setTagError]     = useState('');
+  const [tagSuccess, setTagSuccess] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     getMyMatches(session.user.id).then(data => {
@@ -27,6 +38,53 @@ export default function ProfilePage({ session, profile }: Props) {
   const winRate = stats && stats.totalDuels > 0
     ? Math.round((stats.wins / stats.totalDuels) * 100)
     : 0;
+
+  // Hashtag editor handlers
+  const handleTagInput = (raw: string) => {
+    const val = raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+    setNewTag(val);
+    setTagAvail(null);
+    setTagError('');
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (val.length === 5 && val !== profile?.hashtag) {
+      setTagChecking(true);
+      debounceRef.current = setTimeout(async () => {
+        const ok = await isHashtagAvailable(val, session.user.id);
+        setTagAvail(ok);
+        setTagChecking(false);
+      }, 500);
+    } else if (val === profile?.hashtag) {
+      setTagAvail(null);
+    }
+  };
+
+  const handleTagSave = async () => {
+    if (newTag.length !== 5) { setTagError('5 caractères requis.'); return; }
+    if (newTag === profile?.hashtag) { setEditingTag(false); return; }
+    if (tagAvail === false) { setTagError('Hashtag déjà pris.'); return; }
+    setTagSaving(true);
+    setTagError('');
+    try {
+      await updateHashtag(session.user.id, newTag);
+      setTagSuccess(true);
+      setEditingTag(false);
+      refreshProfile?.();
+      setTimeout(() => setTagSuccess(false), 3000);
+    } catch {
+      setTagError('Erreur lors de la sauvegarde.');
+    } finally {
+      setTagSaving(false);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingTag(false);
+    setNewTag('');
+    setTagAvail(null);
+    setTagError('');
+  };
+
+  const isTagReady = newTag.length === 5 && (tagAvail === true || newTag === profile?.hashtag);
 
   return (
     <Layout>
@@ -55,31 +113,139 @@ export default function ProfilePage({ session, profile }: Props) {
             <h2 style={{ color: theme.colors.text, fontWeight: 800, fontSize: 22, marginBottom: 4 }}>
               {profile?.username ?? 'Chargement...'}
             </h2>
-            <p style={{ color: theme.colors.textSecondary, fontSize: 13, marginBottom: 8 }}>
+            <p style={{ color: theme.colors.textSecondary, fontSize: 13, marginBottom: 12 }}>
               {session.user.email}
             </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{
-                backgroundColor: `${theme.colors.primary}20`,
-                border: `1px solid ${theme.colors.primary}40`,
-                borderRadius: theme.radius.full,
-                padding: '4px 14px',
-                color: theme.colors.primary, fontWeight: 800, fontSize: 14, letterSpacing: 2,
-              }}>
-                #{profile?.hashtag}
-              </span>
-              <button
-                onClick={() => copy(`#${profile?.hashtag ?? ''}`)}
-                style={{
-                  background: 'none', border: `1px solid ${theme.colors.border}`,
-                  borderRadius: theme.radius.md, color: theme.colors.textMuted,
-                  cursor: 'pointer', padding: '4px 10px', fontSize: 12,
-                }}
-                title="Copier le hashtag"
-              >
-                📋
-              </button>
-            </div>
+
+            {/* Hashtag row */}
+            {!editingTag ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{
+                  backgroundColor: `${theme.colors.primary}20`,
+                  border: `1px solid ${theme.colors.primary}40`,
+                  borderRadius: theme.radius.full,
+                  padding: '4px 14px',
+                  color: theme.colors.primaryLight, fontWeight: 900, fontSize: 15, letterSpacing: 3,
+                }}>
+                  #{profile?.hashtag}
+                </span>
+                <button
+                  onClick={() => copy(`#${profile?.hashtag ?? ''}`)}
+                  title="Copier"
+                  style={{
+                    background: 'none', border: `1px solid ${theme.colors.border}`,
+                    borderRadius: theme.radius.md, color: theme.colors.textMuted,
+                    cursor: 'pointer', padding: '4px 10px', fontSize: 12,
+                  }}
+                >📋</button>
+                <button
+                  onClick={() => { setNewTag(profile?.hashtag ?? ''); setEditingTag(true); }}
+                  style={{
+                    background: `${theme.colors.primary}15`,
+                    border: `1px solid ${theme.colors.primary}30`,
+                    borderRadius: theme.radius.md,
+                    color: theme.colors.primaryLight,
+                    cursor: 'pointer', padding: '4px 12px', fontSize: 12, fontWeight: 600,
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = `${theme.colors.primary}25`}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = `${theme.colors.primary}15`}
+                >
+                  ✏️ Modifier
+                </button>
+                {tagSuccess && (
+                  <span style={{ color: theme.colors.success, fontSize: 13, fontWeight: 600 }}>
+                    ✓ Hashtag mis à jour
+                  </span>
+                )}
+              </div>
+            ) : (
+              /* Editor inline */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 340 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <span style={{
+                      position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+                      color: theme.colors.primaryLight, fontWeight: 900, fontSize: 16,
+                      pointerEvents: 'none',
+                    }}>#</span>
+                    <input
+                      autoFocus
+                      value={newTag}
+                      onChange={e => handleTagInput(e.target.value)}
+                      maxLength={5}
+                      placeholder="XXXXX"
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        backgroundColor: theme.colors.surfaceHigh,
+                        border: `1.5px solid ${
+                          newTag.length === 5
+                            ? tagAvail === true ? theme.colors.success
+                            : tagAvail === false ? theme.colors.error
+                            : theme.colors.primary
+                            : theme.colors.primary
+                        }`,
+                        borderRadius: 10,
+                        padding: '8px 36px 8px 30px',
+                        color: theme.colors.text,
+                        fontSize: 18, fontWeight: 900, letterSpacing: 4,
+                        textTransform: 'uppercase', outline: 'none',
+                      }}
+                    />
+                    <span style={{
+                      position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                      fontSize: 14,
+                    }}>
+                      {tagChecking ? '⏳' : tagAvail === true ? '✅' : tagAvail === false ? '❌' : ''}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleTagSave}
+                    disabled={!isTagReady || tagSaving}
+                    style={{
+                      padding: '8px 16px', borderRadius: 10, fontWeight: 700, fontSize: 13,
+                      background: isTagReady ? theme.gradients.primary : theme.colors.surfaceHigh,
+                      border: 'none',
+                      color: isTagReady ? '#fff' : theme.colors.textMuted,
+                      cursor: isTagReady ? 'pointer' : 'not-allowed',
+                      boxShadow: isTagReady ? '0 0 14px rgba(124,58,237,0.4)' : 'none',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {tagSaving ? '…' : 'Sauvegarder'}
+                  </button>
+                  <button
+                    onClick={cancelEdit}
+                    style={{
+                      padding: '8px 12px', borderRadius: 10, fontSize: 13,
+                      background: 'none', border: `1px solid ${theme.colors.border}`,
+                      color: theme.colors.textMuted, cursor: 'pointer',
+                    }}
+                  >✕</button>
+                </div>
+                {/* Feedback */}
+                <div style={{ minHeight: 18, paddingLeft: 2 }}>
+                  {tagError && (
+                    <p style={{ color: theme.colors.error, fontSize: 12, fontWeight: 600 }}>{tagError}</p>
+                  )}
+                  {!tagError && newTag.length === 5 && !tagChecking && tagAvail === false && (
+                    <p style={{ color: theme.colors.error, fontSize: 12, fontWeight: 600 }}>
+                      Ce hashtag est déjà pris — choisis-en un autre.
+                    </p>
+                  )}
+                  {!tagError && newTag.length === 5 && !tagChecking && tagAvail === true && (
+                    <p style={{ color: theme.colors.success, fontSize: 12, fontWeight: 600 }}>
+                      Disponible — à toi !
+                    </p>
+                  )}
+                  {!tagError && newTag.length > 0 && newTag.length < 5 && (
+                    <p style={{ color: theme.colors.textMuted, fontSize: 12 }}>
+                      {5 - newTag.length} caractère{5 - newTag.length > 1 ? 's' : ''} restant{5 - newTag.length > 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Credits */}
@@ -129,9 +295,7 @@ export default function ProfilePage({ session, profile }: Props) {
                 border: '1px solid #5865F240',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 22,
-              }}>
-                🎮
-              </div>
+              }}>🎮</div>
               <div>
                 <p style={{ color: theme.colors.text, fontWeight: 700, fontSize: 15 }}>Discord</p>
                 {profile?.discord_username ? (
@@ -152,7 +316,7 @@ export default function ProfilePage({ session, profile }: Props) {
           borderRadius: 20, padding: 24, marginBottom: 20,
         }}>
           <h3 style={{ color: theme.colors.text, fontWeight: 700, fontSize: 16, marginBottom: 20 }}>
-            Badges {stats ? `(${BADGES.filter(b => b.check(stats)).length}/${BADGES.length})` : ''}
+            Badges {stats ? `(${BADGES.filter(b => b.check(stats!)).length}/${BADGES.length})` : ''}
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
             {BADGES.map(badge => (
@@ -210,16 +374,11 @@ function BadgeCard({ badge, unlocked }: { badge: BadgeDef; unlocked: boolean }) 
       backgroundColor: unlocked ? `${theme.colors.primary}10` : theme.colors.surfaceHigh,
       border: `1.5px solid ${unlocked ? `${theme.colors.primary}40` : theme.colors.border}`,
       borderRadius: 14, padding: '16px 12px',
-      textAlign: 'center',
-      opacity: unlocked ? 1 : 0.5,
-      transition: 'opacity 0.2s',
-      position: 'relative',
+      textAlign: 'center', opacity: unlocked ? 1 : 0.5,
+      transition: 'opacity 0.2s', position: 'relative',
     }}>
       {!unlocked && (
-        <div style={{
-          position: 'absolute', top: 8, right: 8,
-          fontSize: 10, color: theme.colors.textMuted,
-        }}>🔒</div>
+        <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, color: theme.colors.textMuted }}>🔒</div>
       )}
       <div style={{ fontSize: 32, marginBottom: 8, filter: unlocked ? 'none' : 'grayscale(1)' }}>{badge.icon}</div>
       <p style={{ color: unlocked ? theme.colors.text : theme.colors.textMuted, fontWeight: 700, fontSize: 13, marginBottom: 4 }}>
@@ -236,14 +395,12 @@ function DiscordButton({ profile }: { profile: Profile | null }) {
 
   if (isLinked) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{
-          backgroundColor: `${theme.colors.success}20`,
-          border: `1px solid ${theme.colors.success}40`,
-          borderRadius: theme.radius.full, padding: '5px 14px',
-          color: theme.colors.success, fontSize: 13, fontWeight: 600,
-        }}>✅ Lié</span>
-      </div>
+      <span style={{
+        backgroundColor: `${theme.colors.success}20`,
+        border: `1px solid ${theme.colors.success}40`,
+        borderRadius: theme.radius.full, padding: '5px 14px',
+        color: theme.colors.success, fontSize: 13, fontWeight: 600,
+      }}>✅ Lié</span>
     );
   }
 
@@ -255,9 +412,7 @@ function DiscordButton({ profile }: { profile: Profile | null }) {
           borderRadius: theme.radius.md, color: '#5865F2',
           padding: '8px 18px', fontSize: 13, fontWeight: 700,
           cursor: 'not-allowed', opacity: 0.6,
-        }}>
-          🎮 Lier mon Discord
-        </button>
+        }}>🎮 Lier mon Discord</button>
         <p style={{ color: theme.colors.textMuted, fontSize: 11 }}>Bientôt disponible</p>
       </div>
     );
@@ -272,9 +427,7 @@ function DiscordButton({ profile }: { profile: Profile | null }) {
         backgroundColor: '#5865F2', border: 'none',
         borderRadius: theme.radius.md, color: '#fff',
         padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-      }}>
-        🎮 Lier mon Discord
-      </button>
+      }}>🎮 Lier mon Discord</button>
     </a>
   );
 }
