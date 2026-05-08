@@ -3,6 +3,15 @@
 -- Colle ce SQL dans : Supabase > SQL Editor > New Query
 -- =============================================
 
+-- ── Nettoyage de l'ancien schéma (si nécessaire) ─────────
+-- Supprime les tables de l'ancien supabase/schema.sql pour éviter
+-- les conflits de colonnes (creator_id vs challenger_id, etc.)
+drop table if exists public.match_participants cascade;
+drop table if exists public.proofs             cascade;
+drop table if exists public.disputes           cascade;
+drop table if exists public.matches            cascade;
+drop table if exists public.users              cascade;
+
 -- ── Profiles ──────────────────────────────────────────────
 create table if not exists public.profiles (
   id                  uuid references auth.users(id) on delete cascade primary key,
