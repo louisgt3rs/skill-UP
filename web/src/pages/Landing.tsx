@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import { theme } from '../theme';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 /* ─── Fake live data ─────────────────────────── */
 const LIVE_FEED = [
@@ -67,7 +68,7 @@ export default function Landing() {
   const navigate = useNavigate();
 
   return (
-    <div style={{ backgroundColor: theme.colors.background, color: theme.colors.text, overflowX: 'hidden' }}>
+    <div style={{ backgroundColor: theme.colors.background, color: theme.colors.text, overflowX: 'hidden', maxWidth: '100%' }}>
       <HeroSection navigate={navigate} />
       <LiveTicker />
       <StepsSection />
@@ -84,14 +85,15 @@ export default function Landing() {
    HERO
 ═══════════════════════════════════════════════ */
 function HeroSection({ navigate }: { navigate: ReturnType<typeof useNavigate> }) {
+  const isMobile = useIsMobile();
   return (
     <section style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
       {/* Animated background */}
       <AnimatedBackground />
 
       {/* Main content */}
-      <div style={{ maxWidth: 1180, margin: '0 auto', padding: '80px 32px 60px', width: '100%', position: 'relative', zIndex: 2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 480px', gap: 48, alignItems: 'center' }}>
+      <div style={{ maxWidth: 1180, margin: '0 auto', padding: isMobile ? '80px 20px 40px' : '80px 32px 60px', width: '100%', position: 'relative', zIndex: 2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 460px', gap: isMobile ? 40 : 48, alignItems: 'center' }}>
 
           {/* Left: text */}
           <motion.div variants={stagger(0.1)} initial="hidden" animate="visible">
@@ -184,7 +186,7 @@ function HeroSection({ navigate }: { navigate: ReturnType<typeof useNavigate> })
           backdropFilter: 'blur(20px)',
         }}
       >
-        <div style={{ maxWidth: 1180, margin: '0 auto', padding: '20px 32px', display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 20 }}>
+        <div style={{ maxWidth: 1180, margin: '0 auto', padding: isMobile ? '16px 20px' : '20px 32px', display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 16 }}>
           {[
             { value: '482', label: 'joueurs en ligne', color: theme.colors.success },
             { value: '1 240', label: 'matchs aujourd\'hui', color: theme.colors.primary },
@@ -223,11 +225,12 @@ function AnimatedBackground() {
       }} />
       {/* Orb 2 */}
       <div style={{
-        position: 'absolute', top: '30%', right: -100,
-        width: 500, height: 500, borderRadius: '50%',
+        position: 'absolute', top: '30%', right: 0,
+        width: 400, height: 400, borderRadius: '50%',
         background: 'radial-gradient(ellipse at center, rgba(59,130,246,0.12) 0%, transparent 70%)',
         zIndex: 0, pointerEvents: 'none',
         animation: 'orb-drift-2 22s ease-in-out infinite',
+        transform: 'translateX(30%)',
       }} />
       {/* Orb 3 bottom */}
       <div style={{
@@ -250,6 +253,7 @@ function AnimatedBackground() {
 
 /* ─── Matchmaking Card ────────────────────────── */
 function MatchmakingCard({ navigate }: { navigate: ReturnType<typeof useNavigate> }) {
+  const isMobile = useIsMobile();
   const [idx, setIdx] = useState(0);
   const [notifIdx, setNotifIdx] = useState(0);
 
@@ -272,13 +276,14 @@ function MatchmakingCard({ navigate }: { navigate: ReturnType<typeof useNavigate
           exit={{ opacity: 0, x: -10, scale: 0.97 }}
           transition={{ duration: 0.4, ease }}
           style={{
-            position: 'absolute', top: -18, left: -20, zIndex: 10,
+            position: 'absolute', top: -18, left: isMobile ? 0 : -20, zIndex: 10,
             backgroundColor: `${theme.colors.surface}f0`,
             backdropFilter: 'blur(20px)',
             border: `1px solid ${theme.colors.border}`,
             borderRadius: theme.radius.lg, padding: '9px 14px',
             display: 'flex', alignItems: 'center', gap: 8,
             boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            maxWidth: 'calc(100% - 20px)',
           }}
         >
           <span style={{ fontSize: 16 }}>{NOTIFICATIONS[notifIdx].icon}</span>
@@ -479,11 +484,12 @@ function LiveTicker() {
 
 /* ─── Steps section ──────────────────────────── */
 function StepsSection() {
+  const isMobile = useIsMobile();
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: '-80px' });
 
   return (
-    <section ref={ref} style={{ padding: '100px 24px', position: 'relative' }}>
+    <section ref={ref} style={{ padding: isMobile ? '60px 20px' : '100px 24px', position: 'relative' }}>
       <div style={{ maxWidth: 1060, margin: '0 auto' }}>
         <motion.div variants={stagger()} initial="hidden" animate={inView ? 'visible' : 'hidden'}>
           <motion.div variants={fadeUp} style={{ textAlign: 'center', marginBottom: 64 }}>
@@ -493,7 +499,7 @@ function StepsSection() {
             </h2>
           </motion.div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: isMobile ? 16 : 24 }}>
             {[
               { num: '01', icon: '👤', title: 'Crée ton compte', desc: 'Inscription gratuite, 100 crédits offerts. Reçois ton hashtag unique pour recevoir des défis.' },
               { num: '02', icon: '⚔️', title: 'Défie un joueur', desc: 'Entre le hashtag de ton adversaire, choisis la mise. Il reçoit le défi immédiatement.' },
@@ -814,13 +820,14 @@ function CTASection({ navigate }: { navigate: ReturnType<typeof useNavigate> }) 
 
 /* ─── Footer ──────────────────────────────────── */
 function Footer({ navigate }: { navigate: ReturnType<typeof useNavigate> }) {
+  const isMobile = useIsMobile();
   return (
     <footer style={{
       borderTop: `1px solid ${theme.colors.border}`,
       background: `linear-gradient(180deg, transparent, ${theme.colors.surface}60)`,
     }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '56px 32px 40px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 48, flexWrap: 'wrap', marginBottom: 48 }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: isMobile ? '40px 20px 32px' : '56px 32px 40px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr auto auto', gap: isMobile ? 32 : 48, marginBottom: 48 }}>
           {/* Brand */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
