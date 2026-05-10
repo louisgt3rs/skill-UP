@@ -1,4 +1,5 @@
 import { useEffect, useState, FormEvent } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Session } from '@supabase/supabase-js';
 import { Profile, Transaction, WithdrawalRequest } from '../types';
 import { getTransactions, getWithdrawalRequests, requestWithdrawal } from '../lib/db';
@@ -6,6 +7,7 @@ import Layout from '../components/Layout';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import { theme } from '../theme';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface Props {
   session: Session;
@@ -13,11 +15,43 @@ interface Props {
   refreshProfile: () => void;
 }
 
-const DEPOSIT_AMOUNTS = [
-  { credits: 500,  eur: 5,   label: '5 €' },
-  { credits: 1000, eur: 10,  label: '10 €' },
-  { credits: 2500, eur: 25,  label: '25 €' },
-  { credits: 5000, eur: 50,  label: '50 €' },
+const PACKAGES = [
+  {
+    id: 'starter',
+    credits: 500,
+    bonus: 0,
+    price: '5.00 €',
+    label: 'Starter',
+    color: '#6B7280',
+    highlight: false,
+  },
+  {
+    id: 'standard',
+    credits: 1100,
+    bonus: 100,
+    price: '9.00 €',
+    label: 'Standard',
+    color: theme.colors.primary,
+    highlight: false,
+  },
+  {
+    id: 'pro',
+    credits: 2500,
+    bonus: 500,
+    price: '20.00 €',
+    label: 'Pro',
+    color: theme.colors.accent,
+    highlight: true,
+  },
+  {
+    id: 'elite',
+    credits: 6000,
+    bonus: 2000,
+    price: '40.00 €',
+    label: 'Elite',
+    color: '#FBBF24',
+    highlight: false,
+  },
 ];
 
 const TX_ICONS: Record<string, string> = {
@@ -30,7 +64,7 @@ const TX_ICONS: Record<string, string> = {
 };
 
 const TX_LABELS: Record<string, string> = {
-  deposit:     'Dépôt',
+  deposit:     'Achat de crédits',
   withdrawal:  'Retrait',
   match_win:   'Gain duel',
   match_loss:  'Défaite duel',
@@ -41,10 +75,13 @@ const TX_LABELS: Record<string, string> = {
 type Tab = 'overview' | 'deposit' | 'withdraw' | 'history';
 
 export default function Wallet({ session, profile, refreshProfile }: Props) {
-  const [tab, setTab]         = useState<Tab>('overview');
-  const [transactions, setTx] = useState<Transaction[]>([]);
-  const [requests, setReqs]   = useState<WithdrawalRequest[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tab, setTab]           = useState<Tab>('overview');
+  const [transactions, setTx]   = useState<Transaction[]>([]);
+  const [requests, setReqs]     = useState<WithdrawalRequest[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [buyLoading, setBuyLoading] = useState<string | null>(null);
+  const isMobile = useIsMobile();
+  const [searchParams] = useSearchParams();
 
   // Withdrawal form
   const [wAmount, setWAmount]   = useState('');
@@ -54,12 +91,40 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
   const [wSuccess, setWSuccess] = useState(false);
   const [wError, setWError]     = useState('');
 
+  const paymentStatus = searchParams.get('payment');
+
   useEffect(() => {
     Promise.all([
       getTransactions(session.user.id).then(setTx),
       getWithdrawalRequests(session.user.id).then(setReqs),
     ]).finally(() => setLoading(false));
-  }, [session.user.id]);
+
+    if (paymentStatus === 'success') {
+      refreshProfile();
+      setTab('overview');
+    }
+  }, [session.user.id, paymentStatus]);
+
+  const handleBuy = async (packageId: string) => {
+    setBuyLoading(packageId);
+    try {
+      const res = await fetch('/api/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageId, userId: session.user.id }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert('Erreur lors de la création du paiement : ' + (data.error || 'inconnu'));
+      }
+    } catch {
+      alert('Erreur réseau. Réessaie dans un moment.');
+    } finally {
+      setBuyLoading(null);
+    }
+  };
 
   const handleWithdraw = async (e: FormEvent) => {
     e.preventDefault();
@@ -69,7 +134,6 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
     if (!wName.trim())           { setWError('Nom complet requis'); return; }
     if (!wIban.trim())           { setWError('IBAN requis'); return; }
     if (!profile || amount > profile.credits) { setWError('Crédits insuffisants'); return; }
-
     setWLoading(true);
     try {
       await requestWithdrawal(session.user.id, amount, wName.trim(), wIban.trim());
@@ -86,35 +150,74 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: 'overview', label: 'Solde',      icon: '💰' },
-    { id: 'deposit',  label: 'Déposer',    icon: '💳' },
+    { id: 'deposit',  label: 'Acheter',    icon: '💳' },
     { id: 'withdraw', label: 'Retirer',    icon: '🏦' },
     { id: 'history',  label: 'Historique', icon: '📋' },
   ];
 
   return (
     <Layout>
-      <div style={{ maxWidth: 680, margin: '0 auto' }}>
-        <h1 style={{ color: theme.colors.text, fontSize: 26, fontWeight: 900, marginBottom: 28 }}>Portefeuille</h1>
+      <div style={{ maxWidth: 720, margin: '0 auto' }}>
+
+        {/* Payment success banner */}
+        {paymentStatus === 'success' && (
+          <div style={{
+            background: `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.surface})`,
+            border: `1.5px solid ${theme.colors.success}40`,
+            borderRadius: 16, padding: '16px 22px', marginBottom: 20,
+            display: 'flex', alignItems: 'center', gap: 14,
+          }}>
+            <span style={{ fontSize: 28 }}>🎉</span>
+            <div>
+              <p style={{ color: theme.colors.success, fontWeight: 800, fontSize: 15 }}>Paiement confirmé !</p>
+              <p style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+                Tes crédits ont été ajoutés à ton compte. Ils apparaîtront dans quelques secondes.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {paymentStatus === 'cancel' && (
+          <div style={{
+            backgroundColor: `${theme.colors.error}10`,
+            border: `1px solid ${theme.colors.error}30`,
+            borderRadius: 16, padding: '14px 20px', marginBottom: 20,
+          }}>
+            <p style={{ color: theme.colors.error, fontWeight: 600, fontSize: 14 }}>
+              Paiement annulé — aucun montant débité.
+            </p>
+          </div>
+        )}
+
+        <h1 style={{ color: theme.colors.text, fontSize: 26, fontWeight: 900, marginBottom: 24 }}>Portefeuille</h1>
 
         {/* Balance banner */}
         <div style={{
-          background: `linear-gradient(135deg, ${theme.colors.primary}20, ${theme.colors.surface})`,
-          border: `1px solid ${theme.colors.primary}30`,
-          borderRadius: 20, padding: '28px 32px', marginBottom: 28,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16,
+          background: `linear-gradient(135deg, ${theme.colors.primary}18, ${theme.colors.surface})`,
+          border: `1.5px solid ${theme.colors.primary}30`,
+          borderRadius: 22, padding: '24px 28px', marginBottom: 24,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexWrap: 'wrap', gap: 16,
+          boxShadow: `0 0 40px ${theme.colors.primary}12`,
         }}>
           <div>
-            <p style={{ color: theme.colors.textMuted, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>Solde disponible</p>
-            <p style={{ color: theme.colors.accent, fontSize: 42, fontWeight: 900, letterSpacing: -2, lineHeight: 1 }}>
+            <p style={{ color: theme.colors.textMuted, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>Solde disponible</p>
+            <p style={{ color: theme.colors.accent, fontSize: isMobile ? 38 : 48, fontWeight: 900, letterSpacing: -2, lineHeight: 1 }}>
               {(profile?.credits ?? 0).toLocaleString('fr-FR')}
             </p>
-            <p style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 6 }}>
-              crédits · ≈ <strong>{((profile?.credits ?? 0) / 100).toFixed(2)} €</strong>
+            <p style={{ color: theme.colors.textSecondary, fontSize: 14, marginTop: 6 }}>
+              crédits · ≈ <strong style={{ color: theme.colors.text }}>{((profile?.credits ?? 0) / 100).toFixed(2)} €</strong>
             </p>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <p style={{ color: theme.colors.textMuted, fontSize: 12, marginBottom: 4 }}>Taux de change</p>
-            <p style={{ color: theme.colors.text, fontWeight: 700, fontSize: 16 }}>100 cr = 1 €</p>
+          <div style={{
+            textAlign: 'right',
+            backgroundColor: `${theme.colors.accent}10`,
+            border: `1px solid ${theme.colors.accent}20`,
+            borderRadius: 14, padding: '14px 18px',
+          }}>
+            <p style={{ color: theme.colors.textMuted, fontSize: 11, marginBottom: 4 }}>Taux de change</p>
+            <p style={{ color: theme.colors.text, fontWeight: 900, fontSize: 18 }}>100 cr = 1 €</p>
+            <p style={{ color: theme.colors.textMuted, fontSize: 11, marginTop: 4 }}>Retrait min. 500 cr</p>
           </div>
         </div>
 
@@ -130,13 +233,14 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
               key={t.id}
               onClick={() => setTab(t.id)}
               style={{
-                flex: 1, padding: '9px 8px',
+                flex: 1, padding: '9px 6px',
                 borderRadius: 10, border: 'none', cursor: 'pointer',
                 backgroundColor: tab === t.id ? theme.colors.primary : 'transparent',
                 color: tab === t.id ? '#fff' : theme.colors.textSecondary,
                 fontWeight: tab === t.id ? 700 : 400,
-                fontSize: 13, transition: 'all 0.15s',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                fontSize: isMobile ? 11 : 13, transition: 'all 0.15s',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                boxShadow: tab === t.id ? `0 0 16px ${theme.colors.primary}40` : 'none',
               }}
             >
               <span>{t.icon}</span>
@@ -148,32 +252,38 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
         {/* ── Overview ── */}
         {tab === 'overview' && (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 24 }}>
-              <button
-                onClick={() => setTab('deposit')}
-                style={{
-                  backgroundColor: theme.colors.primary, border: 'none',
-                  borderRadius: 16, color: '#fff', cursor: 'pointer',
-                  padding: '20px', textAlign: 'left', fontWeight: 700,
-                  fontSize: 16,
-                  boxShadow: `0 0 30px ${theme.colors.primary}30`,
-                }}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+              <button onClick={() => setTab('deposit')} style={{
+                background: theme.gradients.primary, border: 'none',
+                borderRadius: 18, color: '#fff', cursor: 'pointer',
+                padding: '22px 20px', textAlign: 'left', fontWeight: 700, fontSize: 15,
+                boxShadow: `0 0 30px ${theme.colors.primary}30`,
+                transition: 'transform 0.15s',
+              }}
+                onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
+                onMouseLeave={e => e.currentTarget.style.transform = 'none'}
               >
-                <div style={{ fontSize: 28, marginBottom: 8 }}>💳</div>
-                Déposer des crédits
+                <div style={{ fontSize: 28, marginBottom: 10 }}>💳</div>
+                Acheter des crédits
+                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 400, marginTop: 4 }}>
+                  Paiement sécurisé par carte
+                </p>
               </button>
-              <button
-                onClick={() => setTab('withdraw')}
-                style={{
-                  backgroundColor: theme.colors.surface,
-                  border: `1.5px solid ${theme.colors.border}`,
-                  borderRadius: 16, color: theme.colors.text, cursor: 'pointer',
-                  padding: '20px', textAlign: 'left', fontWeight: 700,
-                  fontSize: 16,
-                }}
+              <button onClick={() => setTab('withdraw')} style={{
+                backgroundColor: theme.colors.surface,
+                border: `1.5px solid ${theme.colors.border}`,
+                borderRadius: 18, color: theme.colors.text, cursor: 'pointer',
+                padding: '22px 20px', textAlign: 'left', fontWeight: 700, fontSize: 15,
+                transition: 'all 0.15s',
+              }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = theme.colors.accent + '60'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = theme.colors.border; }}
               >
-                <div style={{ fontSize: 28, marginBottom: 8 }}>🏦</div>
-                Demander un retrait
+                <div style={{ fontSize: 28, marginBottom: 10 }}>🏦</div>
+                Retirer mes gains
+                <p style={{ color: theme.colors.textMuted, fontSize: 12, fontWeight: 400, marginTop: 4 }}>
+                  Virement IBAN sous 48h
+                </p>
               </button>
             </div>
 
@@ -182,7 +292,7 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
               <div style={{
                 backgroundColor: `${theme.colors.accent}0d`,
                 border: `1px solid ${theme.colors.accent}30`,
-                borderRadius: 14, padding: 16, marginBottom: 20,
+                borderRadius: 14, padding: '14px 18px', marginBottom: 20,
               }}>
                 <p style={{ color: theme.colors.accent, fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
                   ⏳ Retraits en attente de validation
@@ -200,7 +310,6 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
               </div>
             )}
 
-            {/* Recent transactions (last 5) */}
             <h3 style={{ color: theme.colors.text, fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Dernières transactions</h3>
             {loading ? (
               <p style={{ color: theme.colors.textMuted, fontSize: 14 }}>Chargement...</p>
@@ -210,7 +319,10 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
               transactions.slice(0, 5).map(tx => <TxRow key={tx.id} tx={tx} />)
             )}
             {transactions.length > 5 && (
-              <button onClick={() => setTab('history')} style={{ background: 'none', border: 'none', color: theme.colors.primary, cursor: 'pointer', fontSize: 13, marginTop: 8 }}>
+              <button onClick={() => setTab('history')} style={{
+                background: 'none', border: 'none', color: theme.colors.primary,
+                cursor: 'pointer', fontSize: 13, marginTop: 8,
+              }}>
                 Voir tout l'historique →
               </button>
             )}
@@ -220,41 +332,89 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
         {/* ── Deposit ── */}
         {tab === 'deposit' && (
           <div>
+            {/* Security badge */}
             <div style={{
-              backgroundColor: `${theme.colors.secondary}10`,
-              border: `1px solid ${theme.colors.secondary}30`,
-              borderRadius: 14, padding: 16, marginBottom: 24,
-              display: 'flex', gap: 12, alignItems: 'flex-start',
+              display: 'flex', alignItems: 'center', gap: 10,
+              backgroundColor: `${theme.colors.success}0d`,
+              border: `1px solid ${theme.colors.success}25`,
+              borderRadius: 12, padding: '10px 16px', marginBottom: 24,
             }}>
-              <span style={{ fontSize: 20, flexShrink: 0 }}>ℹ️</span>
-              <p style={{ color: theme.colors.textSecondary, fontSize: 13, lineHeight: 1.6 }}>
-                Le paiement en ligne sera bientôt disponible. En attendant, contacte notre support pour effectuer un dépôt manuel.
-                <br /><strong style={{ color: theme.colors.text }}>Email : support@skillup.gg</strong>
+              <span style={{ fontSize: 18 }}>🔒</span>
+              <p style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+                Paiement sécurisé par <strong style={{ color: theme.colors.text }}>Stripe</strong> · Visa, Mastercard, CB, Apple Pay, Google Pay
               </p>
             </div>
 
-            <h3 style={{ color: theme.colors.text, fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Choisir un montant</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 24 }}>
-              {DEPOSIT_AMOUNTS.map(d => (
-                <div key={d.credits} style={{
-                  backgroundColor: theme.colors.surface,
-                  border: `1.5px solid ${theme.colors.border}`,
-                  borderRadius: 16, padding: '20px',
-                  display: 'flex', flexDirection: 'column', gap: 6,
-                  opacity: 0.7,
-                }}>
-                  <p style={{ color: theme.colors.text, fontWeight: 900, fontSize: 22 }}>{d.credits.toLocaleString()} cr</p>
-                  <p style={{ color: theme.colors.textSecondary, fontSize: 14 }}>{d.label}</p>
-                  <p style={{
-                    backgroundColor: theme.colors.surfaceHigh,
-                    borderRadius: theme.radius.full,
-                    padding: '3px 10px', fontSize: 11,
-                    color: theme.colors.textMuted, width: 'fit-content',
-                    marginTop: 4,
-                  }}>Bientôt disponible</p>
+            <h3 style={{ color: theme.colors.text, fontWeight: 700, fontSize: 15, marginBottom: 16 }}>
+              Choisir un pack
+            </h3>
+
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(2, 1fr)', gap: 14, marginBottom: 24 }}>
+              {PACKAGES.map(pkg => (
+                <div
+                  key={pkg.id}
+                  style={{
+                    position: 'relative',
+                    backgroundColor: theme.colors.surface,
+                    border: `2px solid ${pkg.highlight ? pkg.color + '60' : theme.colors.border}`,
+                    borderRadius: 20,
+                    overflow: 'hidden',
+                    boxShadow: pkg.highlight ? `0 0 30px ${pkg.color}20` : 'none',
+                  }}
+                >
+                  {pkg.highlight && (
+                    <div style={{
+                      position: 'absolute', top: 0, left: 0, right: 0,
+                      background: `linear-gradient(90deg, ${pkg.color}, ${pkg.color}90)`,
+                      textAlign: 'center', padding: '5px',
+                      color: '#000', fontSize: 10, fontWeight: 900, letterSpacing: 1,
+                    }}>
+                      ⭐ MEILLEUR RAPPORT
+                    </div>
+                  )}
+                  <div style={{ padding: pkg.highlight ? '44px 20px 20px' : '20px' }}>
+                    <div style={{ marginBottom: 12 }}>
+                      <span style={{
+                        backgroundColor: `${pkg.color}20`, border: `1px solid ${pkg.color}40`,
+                        color: pkg.color, borderRadius: 6, padding: '2px 10px',
+                        fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
+                      }}>{pkg.label}</span>
+                    </div>
+                    <p style={{ color: theme.colors.text, fontSize: 26, fontWeight: 900, marginBottom: 2 }}>
+                      {pkg.credits.toLocaleString('fr-FR')}
+                    </p>
+                    <p style={{ color: theme.colors.textMuted, fontSize: 12, marginBottom: 4 }}>crédits</p>
+                    {pkg.bonus > 0 && (
+                      <p style={{ color: theme.colors.success, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+                        +{pkg.bonus} bonus offerts
+                      </p>
+                    )}
+                    <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: 12, marginTop: pkg.bonus > 0 ? 0 : 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ color: theme.colors.text, fontSize: 20, fontWeight: 900 }}>{pkg.price}</span>
+                    </div>
+                    <button
+                      onClick={() => handleBuy(pkg.id)}
+                      disabled={buyLoading !== null}
+                      style={{
+                        width: '100%', marginTop: 12, padding: '11px 0',
+                        background: buyLoading === pkg.id ? theme.colors.surfaceHigh : (pkg.highlight ? `linear-gradient(135deg, ${pkg.color}, ${pkg.color}cc)` : theme.gradients.primary),
+                        border: 'none', borderRadius: 12, color: pkg.highlight ? '#000' : '#fff',
+                        fontSize: 13, fontWeight: 800, cursor: buyLoading !== null ? 'not-allowed' : 'pointer',
+                        boxShadow: pkg.highlight ? `0 0 20px ${pkg.color}40` : 'none',
+                        transition: 'all 0.15s',
+                        opacity: buyLoading !== null && buyLoading !== pkg.id ? 0.6 : 1,
+                      }}
+                    >
+                      {buyLoading === pkg.id ? '⏳ Redirection...' : '💳 Acheter'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
+
+            <p style={{ color: theme.colors.textMuted, fontSize: 12, textAlign: 'center' }}>
+              Tu seras redirigé vers Stripe (paiement sécurisé). Les crédits sont ajoutés automatiquement après confirmation.
+            </p>
           </div>
         )}
 
@@ -273,11 +433,11 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
                   Demande envoyée !
                 </h3>
                 <p style={{ color: theme.colors.textSecondary, lineHeight: 1.7, marginBottom: 24 }}>
-                  Ton retrait est en cours de traitement.<br />
-                  Compte 24 à 48h ouvrées pour le virement bancaire.
+                  Ton retrait de <strong>{Math.round(parseInt(wAmount) / 100 * 100) / 100} €</strong> est en cours de traitement.<br />
+                  Délai habituel : 24 à 48h ouvrées.
                 </p>
                 <button onClick={() => { setWSuccess(false); setTab('overview'); }} style={{
-                  backgroundColor: theme.colors.primary, border: 'none',
+                  background: theme.gradients.primary, border: 'none',
                   borderRadius: theme.radius.md, color: '#fff',
                   cursor: 'pointer', padding: '12px 28px', fontWeight: 700,
                 }}>
@@ -289,13 +449,14 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
                 <div style={{
                   backgroundColor: `${theme.colors.accent}0d`,
                   border: `1px solid ${theme.colors.accent}30`,
-                  borderRadius: 14, padding: 16, marginBottom: 24,
+                  borderRadius: 14, padding: '14px 18px', marginBottom: 24,
                   display: 'flex', gap: 10,
                 }}>
                   <span>⚠️</span>
                   <p style={{ color: theme.colors.textSecondary, fontSize: 13, lineHeight: 1.6 }}>
-                    <strong style={{ color: theme.colors.accent }}>Les retraits seront vérifiés manuellement avant validation.</strong>
-                    {' '}Délai habituel : 24 à 48h ouvrées. Minimum : 500 crédits (5 €).
+                    <strong style={{ color: theme.colors.accent }}>Retraits vérifiés manuellement avant validation.</strong>
+                    {' '}Délai : 24–48h ouvrées. Minimum : 500 crédits (5 €).
+                    <br />Solde actuel : <strong style={{ color: theme.colors.text }}>{(profile?.credits ?? 0).toLocaleString()} cr</strong>
                   </p>
                 </div>
 
@@ -307,21 +468,14 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
                   placeholder="500"
                   min={500}
                 />
-                {wAmount && parseInt(wAmount) >= 500 && (
-                  <p style={{ color: theme.colors.textMuted, fontSize: 12, marginTop: -10, marginBottom: 16 }}>
-                    = {(parseInt(wAmount) / 100).toFixed(2)} € · Disponible : {(profile?.credits ?? 0)} cr
+                {wAmount && parseInt(wAmount) >= 100 && (
+                  <p style={{ color: theme.colors.accent, fontSize: 13, marginTop: -10, marginBottom: 16, fontWeight: 600 }}>
+                    = {(parseInt(wAmount) / 100).toFixed(2)} €
                   </p>
                 )}
 
                 <Input
-                  label="Méthode de retrait"
-                  value="Virement bancaire (SEPA)"
-                  readOnly
-                  style={{ color: theme.colors.textMuted, cursor: 'not-allowed' }}
-                />
-
-                <Input
-                  label="Nom complet (titulaire du compte)"
+                  label="Nom complet (titulaire du compte bancaire)"
                   value={wName}
                   onChange={e => setWName(e.target.value)}
                   placeholder="Jean Dupont"
@@ -331,9 +485,9 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
                 <Input
                   label="IBAN"
                   value={wIban}
-                  onChange={e => setWIban(e.target.value.toUpperCase())}
+                  onChange={e => setWIban(e.target.value.toUpperCase().replace(/\s/g, '').replace(/(.{4})/g, '$1 ').trim())}
                   placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
-                  style={{ letterSpacing: 1, fontFamily: 'monospace' }}
+                  style={{ letterSpacing: 1.5, fontFamily: 'monospace' }}
                 />
 
                 {wError && (
@@ -378,6 +532,9 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
 function TxRow({ tx }: { tx: Transaction }) {
   const isPositive = tx.amount > 0;
   const isPending  = tx.status === 'pending';
+  const label = tx.type === 'deposit' && tx.description?.startsWith('Stripe')
+    ? 'Achat Stripe'
+    : TX_LABELS[tx.type] ?? tx.type;
 
   return (
     <div style={{
@@ -388,16 +545,16 @@ function TxRow({ tx }: { tx: Transaction }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{
-          width: 36, height: 36, borderRadius: 10,
+          width: 38, height: 38, borderRadius: 10,
           backgroundColor: theme.colors.surfaceHigh,
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
         }}>
           {TX_ICONS[tx.type] ?? '💱'}
         </div>
         <div>
-          <p style={{ color: theme.colors.text, fontWeight: 600, fontSize: 14 }}>{TX_LABELS[tx.type] ?? tx.type}</p>
+          <p style={{ color: theme.colors.text, fontWeight: 600, fontSize: 14 }}>{label}</p>
           <p style={{ color: theme.colors.textMuted, fontSize: 12 }}>
-            {tx.description || ''} · {new Date(tx.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+            {new Date(tx.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
       </div>
