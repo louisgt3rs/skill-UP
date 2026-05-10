@@ -129,7 +129,7 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
     e.preventDefault();
     setWError('');
     const credits = parseInt(wAmount, 10);
-    if (!credits || credits < 500)              { setWError('Montant minimum : 500 crédits (5 €)'); return; }
+    if (!credits || credits < 100)              { setWError('Montant minimum : 100 crédits (1 €)'); return; }
     if (!profile || credits > profile.credits)  { setWError('Crédits insuffisants'); return; }
     setWLoading(true);
     try {
@@ -220,7 +220,7 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
           }}>
             <p style={{ color: theme.colors.textMuted, fontSize: 11, marginBottom: 4 }}>Taux de change</p>
             <p style={{ color: theme.colors.text, fontWeight: 900, fontSize: 18 }}>100 cr = 1 €</p>
-            <p style={{ color: theme.colors.textMuted, fontSize: 11, marginTop: 4 }}>Retrait min. 500 cr</p>
+            <p style={{ color: theme.colors.textMuted, fontSize: 11, marginTop: 4 }}>Retrait min. 100 cr</p>
           </div>
         </div>
 
@@ -553,7 +553,7 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
                   <span>✅</span>
                   <p style={{ color: theme.colors.textSecondary, fontSize: 13, lineHeight: 1.5 }}>
                     <strong style={{ color: theme.colors.success }}>Compte bancaire vérifié.</strong>
-                    {' '}Virement automatique · Minimum 500 cr (5 €) ·{' '}
+                    {' '}Virement automatique · Minimum 100 cr (1 €) ·{' '}
                     Solde : <strong style={{ color: theme.colors.text }}>{(profile?.credits ?? 0).toLocaleString()} cr</strong>
                   </p>
                 </div>
@@ -569,7 +569,7 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
                   <div style={{ position: 'relative', marginBottom: 12 }}>
                     <input
                       type="number"
-                      min={500}
+                      min={100}
                       max={profile?.credits ?? 0}
                       value={wAmount}
                       onChange={e => setWAmount(e.target.value)}

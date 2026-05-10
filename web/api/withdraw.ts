@@ -11,8 +11,8 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
   const { userId, credits } = req.body as { userId: string; credits: number };
 
-  if (!userId || !credits || credits < 500) {
-    return res.status(400).json({ error: 'Montant minimum 500 crédits (5 €)' });
+  if (!userId || !credits || credits < 100) {
+    return res.status(400).json({ error: 'Montant minimum 100 crédits (1 €)' });
   }
 
   try {
