@@ -15,44 +15,7 @@ interface Props {
   refreshProfile: () => void;
 }
 
-const PACKAGES = [
-  {
-    id: 'starter',
-    credits: 500,
-    bonus: 0,
-    price: '5.00 €',
-    label: 'Starter',
-    color: '#6B7280',
-    highlight: false,
-  },
-  {
-    id: 'standard',
-    credits: 1100,
-    bonus: 100,
-    price: '9.00 €',
-    label: 'Standard',
-    color: theme.colors.primary,
-    highlight: false,
-  },
-  {
-    id: 'pro',
-    credits: 2500,
-    bonus: 500,
-    price: '20.00 €',
-    label: 'Pro',
-    color: theme.colors.accent,
-    highlight: true,
-  },
-  {
-    id: 'elite',
-    credits: 6000,
-    bonus: 2000,
-    price: '40.00 €',
-    label: 'Elite',
-    color: '#FBBF24',
-    highlight: false,
-  },
-];
+const QUICK_AMOUNTS = [5, 10, 20, 50, 100, 200];
 
 const TX_ICONS: Record<string, string> = {
   deposit:     '💳',
@@ -79,7 +42,8 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
   const [transactions, setTx]   = useState<Transaction[]>([]);
   const [requests, setReqs]     = useState<WithdrawalRequest[]>([]);
   const [loading, setLoading]   = useState(true);
-  const [buyLoading, setBuyLoading] = useState<string | null>(null);
+  const [buyLoading, setBuyLoading] = useState(false);
+  const [buyAmount, setBuyAmount]   = useState('');
   const isMobile = useIsMobile();
   const [searchParams] = useSearchParams();
 
@@ -105,24 +69,26 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
     }
   }, [session.user.id, paymentStatus]);
 
-  const handleBuy = async (packageId: string) => {
-    setBuyLoading(packageId);
+  const handleBuy = async () => {
+    const amountEur = parseFloat(buyAmount);
+    if (!amountEur || amountEur < 1 || amountEur > 1000) return;
+    setBuyLoading(true);
     try {
       const res = await fetch('/api/create-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packageId, userId: session.user.id }),
+        body: JSON.stringify({ amountEur, userId: session.user.id }),
       });
       const data = await res.json();
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert('Erreur lors de la création du paiement : ' + (data.error || 'inconnu'));
+        alert('Erreur : ' + (data.error || 'inconnu'));
       }
     } catch {
       alert('Erreur réseau. Réessaie dans un moment.');
     } finally {
-      setBuyLoading(null);
+      setBuyLoading(false);
     }
   };
 
@@ -332,88 +298,118 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
         {/* ── Deposit ── */}
         {tab === 'deposit' && (
           <div>
-            {/* Security badge */}
+            {/* Rate info */}
             <div style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              backgroundColor: `${theme.colors.success}0d`,
-              border: `1px solid ${theme.colors.success}25`,
-              borderRadius: 12, padding: '10px 16px', marginBottom: 24,
+              background: `linear-gradient(135deg, ${theme.colors.primary}18, ${theme.colors.surface})`,
+              border: `1.5px solid ${theme.colors.primary}30`,
+              borderRadius: 18, padding: '20px 24px', marginBottom: 24,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
             }}>
-              <span style={{ fontSize: 18 }}>🔒</span>
-              <p style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
-                Paiement sécurisé par <strong style={{ color: theme.colors.text }}>Stripe</strong> · Visa, Mastercard, CB, Apple Pay, Google Pay
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 32 }}>💎</span>
+                <div>
+                  <p style={{ color: theme.colors.text, fontWeight: 900, fontSize: 18 }}>1 € = 100 crédits</p>
+                  <p style={{ color: theme.colors.textMuted, fontSize: 12 }}>Taux fixe · Pas de frais cachés</p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 14 }}>🔒</span>
+                <span style={{ color: theme.colors.textMuted, fontSize: 12 }}>Paiement sécurisé Stripe</span>
+              </div>
             </div>
 
-            <h3 style={{ color: theme.colors.text, fontWeight: 700, fontSize: 15, marginBottom: 16 }}>
-              Choisir un pack
-            </h3>
+            {/* Amount input */}
+            <div style={{
+              backgroundColor: theme.colors.surface,
+              border: `1.5px solid ${theme.colors.border}`,
+              borderRadius: 20, padding: '24px',
+              marginBottom: 16,
+            }}>
+              <p style={{ color: theme.colors.textMuted, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 16 }}>
+                Montant à déposer
+              </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(2, 1fr)', gap: 14, marginBottom: 24 }}>
-              {PACKAGES.map(pkg => (
-                <div
-                  key={pkg.id}
+              {/* Quick amounts */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+                {QUICK_AMOUNTS.map(a => (
+                  <button
+                    key={a}
+                    onClick={() => setBuyAmount(String(a))}
+                    style={{
+                      padding: '7px 14px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                      fontSize: 13, fontWeight: 600,
+                      backgroundColor: buyAmount === String(a) ? theme.colors.primary : theme.colors.surfaceHigh,
+                      color: buyAmount === String(a) ? '#fff' : theme.colors.textSecondary,
+                      boxShadow: buyAmount === String(a) ? `0 0 14px ${theme.colors.primary}40` : 'none',
+                      transition: 'all 0.15s',
+                    }}
+                  >{a} €</button>
+                ))}
+              </div>
+
+              {/* Custom input */}
+              <div style={{ position: 'relative', marginBottom: 20 }}>
+                <span style={{
+                  position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
+                  color: theme.colors.textMuted, fontSize: 18, fontWeight: 700, pointerEvents: 'none',
+                }}>€</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={buyAmount}
+                  onChange={e => setBuyAmount(e.target.value)}
+                  placeholder="Montant libre (1 – 1 000)"
                   style={{
-                    position: 'relative',
-                    backgroundColor: theme.colors.surface,
-                    border: `2px solid ${pkg.highlight ? pkg.color + '60' : theme.colors.border}`,
-                    borderRadius: 20,
-                    overflow: 'hidden',
-                    boxShadow: pkg.highlight ? `0 0 30px ${pkg.color}20` : 'none',
+                    width: '100%', padding: '14px 16px 14px 36px',
+                    backgroundColor: theme.colors.surfaceHigh,
+                    border: `1.5px solid ${buyAmount ? theme.colors.primary + '60' : theme.colors.border}`,
+                    borderRadius: 12, color: theme.colors.text,
+                    fontSize: 18, fontWeight: 700, outline: 'none',
+                    boxSizing: 'border-box',
                   }}
-                >
-                  {pkg.highlight && (
-                    <div style={{
-                      position: 'absolute', top: 0, left: 0, right: 0,
-                      background: `linear-gradient(90deg, ${pkg.color}, ${pkg.color}90)`,
-                      textAlign: 'center', padding: '5px',
-                      color: '#000', fontSize: 10, fontWeight: 900, letterSpacing: 1,
-                    }}>
-                      ⭐ MEILLEUR RAPPORT
-                    </div>
-                  )}
-                  <div style={{ padding: pkg.highlight ? '44px 20px 20px' : '20px' }}>
-                    <div style={{ marginBottom: 12 }}>
-                      <span style={{
-                        backgroundColor: `${pkg.color}20`, border: `1px solid ${pkg.color}40`,
-                        color: pkg.color, borderRadius: 6, padding: '2px 10px',
-                        fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
-                      }}>{pkg.label}</span>
-                    </div>
-                    <p style={{ color: theme.colors.text, fontSize: 26, fontWeight: 900, marginBottom: 2 }}>
-                      {pkg.credits.toLocaleString('fr-FR')}
-                    </p>
-                    <p style={{ color: theme.colors.textMuted, fontSize: 12, marginBottom: 4 }}>crédits</p>
-                    {pkg.bonus > 0 && (
-                      <p style={{ color: theme.colors.success, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
-                        +{pkg.bonus} bonus offerts
-                      </p>
-                    )}
-                    <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: 12, marginTop: pkg.bonus > 0 ? 0 : 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ color: theme.colors.text, fontSize: 20, fontWeight: 900 }}>{pkg.price}</span>
-                    </div>
-                    <button
-                      onClick={() => handleBuy(pkg.id)}
-                      disabled={buyLoading !== null}
-                      style={{
-                        width: '100%', marginTop: 12, padding: '11px 0',
-                        background: buyLoading === pkg.id ? theme.colors.surfaceHigh : (pkg.highlight ? `linear-gradient(135deg, ${pkg.color}, ${pkg.color}cc)` : theme.gradients.primary),
-                        border: 'none', borderRadius: 12, color: pkg.highlight ? '#000' : '#fff',
-                        fontSize: 13, fontWeight: 800, cursor: buyLoading !== null ? 'not-allowed' : 'pointer',
-                        boxShadow: pkg.highlight ? `0 0 20px ${pkg.color}40` : 'none',
-                        transition: 'all 0.15s',
-                        opacity: buyLoading !== null && buyLoading !== pkg.id ? 0.6 : 1,
-                      }}
-                    >
-                      {buyLoading === pkg.id ? '⏳ Redirection...' : '💳 Acheter'}
-                    </button>
-                  </div>
+                />
+              </div>
+
+              {/* Credits preview */}
+              {parseFloat(buyAmount) >= 1 && parseFloat(buyAmount) <= 1000 && (
+                <div style={{
+                  backgroundColor: `${theme.colors.accent}10`,
+                  border: `1px solid ${theme.colors.accent}25`,
+                  borderRadius: 12, padding: '12px 18px', marginBottom: 20,
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <span style={{ color: theme.colors.textMuted, fontSize: 14 }}>Tu recevras</span>
+                  <span style={{ color: theme.colors.accent, fontSize: 22, fontWeight: 900 }}>
+                    {(Math.round(parseFloat(buyAmount) * 100)).toLocaleString('fr-FR')} crédits
+                  </span>
                 </div>
-              ))}
+              )}
+
+              <button
+                onClick={handleBuy}
+                disabled={buyLoading || !buyAmount || parseFloat(buyAmount) < 1 || parseFloat(buyAmount) > 1000}
+                style={{
+                  width: '100%', padding: '14px',
+                  background: buyLoading || !buyAmount || parseFloat(buyAmount) < 1 ? theme.colors.surfaceHigh : theme.gradients.primary,
+                  border: 'none', borderRadius: 14,
+                  color: buyLoading || !buyAmount || parseFloat(buyAmount) < 1 ? theme.colors.textMuted : '#fff',
+                  fontSize: 15, fontWeight: 800,
+                  cursor: buyLoading || !buyAmount || parseFloat(buyAmount) < 1 ? 'not-allowed' : 'pointer',
+                  boxShadow: !buyLoading && buyAmount && parseFloat(buyAmount) >= 1 ? `0 0 24px ${theme.colors.primary}40` : 'none',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {buyLoading
+                  ? '⏳ Redirection vers Stripe...'
+                  : buyAmount && parseFloat(buyAmount) >= 1
+                    ? `💳 Payer ${parseFloat(buyAmount).toFixed(2)} €`
+                    : '💳 Choisir un montant'}
+              </button>
             </div>
 
             <p style={{ color: theme.colors.textMuted, fontSize: 12, textAlign: 'center' }}>
-              Tu seras redirigé vers Stripe (paiement sécurisé). Les crédits sont ajoutés automatiquement après confirmation.
+              Visa · Mastercard · CB · Apple Pay · Google Pay · Les crédits sont ajoutés automatiquement après confirmation.
             </p>
           </div>
         )}
