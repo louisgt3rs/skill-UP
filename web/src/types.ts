@@ -8,6 +8,8 @@ export interface Profile {
   wins: number;
   losses: number;
   win_streak: number;
+  xp: number;
+  level: number;
   discord_id: string | null;
   discord_username: string | null;
   discord_avatar: string | null;

@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { Profile, Match, MatchProof, Message, Transaction, WithdrawalRequest, GameDef, GAMES, Conversation, ChatMessage } from '../types';
+import { getLevelInfo, XP_WIN, XP_LOSS } from './xp';
 
 function genHashtag(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -395,16 +396,64 @@ export async function updateDuelProposalStatus(
 
 async function updateMatchStats(winnerId: string, loserId: string): Promise<void> {
   const [w, l] = await Promise.all([getProfile(winnerId), getProfile(loserId)]);
+  const newWinnerXp = (w?.xp ?? 0) + XP_WIN;
+  const newLoserXp  = (l?.xp ?? 0) + XP_LOSS;
   await Promise.all([
     supabase.from('profiles').update({
       wins: (w?.wins ?? 0) + 1,
       win_streak: (w?.win_streak ?? 0) + 1,
+      xp: newWinnerXp,
+      level: getLevelInfo(newWinnerXp).level,
     }).eq('id', winnerId),
     supabase.from('profiles').update({
       losses: (l?.losses ?? 0) + 1,
       win_streak: 0,
+      xp: newLoserXp,
+      level: getLevelInfo(newLoserXp).level,
     }).eq('id', loserId),
   ]);
+}
+
+export async function getLeaderboard(): Promise<Profile[]> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('xp', { ascending: false })
+    .limit(50);
+  return data || [];
+}
+
+export async function getWeeklyLeaderboard(): Promise<{ profile: Profile; weeklyWins: number }[]> {
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: matches } = await supabase
+    .from('matches')
+    .select('winner_id')
+    .eq('status', 'completed')
+    .not('winner_id', 'is', null)
+    .gte('updated_at', weekAgo);
+
+  if (!matches || matches.length === 0) return [];
+
+  const winCounts: Record<string, number> = {};
+  for (const m of matches) {
+    if (m.winner_id) winCounts[m.winner_id] = (winCounts[m.winner_id] ?? 0) + 1;
+  }
+
+  const topIds = Object.entries(winCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([id]) => id);
+
+  if (topIds.length === 0) return [];
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('id', topIds);
+
+  return (profiles || [])
+    .map(p => ({ profile: p, weeklyWins: winCounts[p.id] ?? 0 }))
+    .sort((a, b) => b.weeklyWins - a.weeklyWins);
 }
 
 export async function getActiveMatchForConversation(conversationId: string): Promise<Match | null> {

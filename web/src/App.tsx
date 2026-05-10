@@ -17,9 +17,10 @@ import GameDetail  from './pages/GameDetail';
 import MatchPage   from './pages/Match';
 import ProfilePage from './pages/Profile';
 import Wallet      from './pages/Wallet';
-import Admin       from './pages/Admin';
-import Onboarding  from './pages/Onboarding';
-import Chat        from './pages/Chat';
+import Admin        from './pages/Admin';
+import Onboarding   from './pages/Onboarding';
+import Chat         from './pages/Chat';
+import Leaderboard  from './pages/Leaderboard';
 
 // Pages that should not show the navbar
 const NO_NAV_PAGES = ['/onboarding'];
@@ -86,6 +87,7 @@ function AppRouter({ session, profile, refresh }: AppRouterProps) {
         <Route path="/admin"               element={guard(<Admin session={session!} profile={profile} />)} />
         <Route path="/chat"                element={guard(<Chat {...protectedProps} />)} />
         <Route path="/chat/:conversationId" element={guard(<Chat {...protectedProps} />)} />
+        <Route path="/leaderboard"         element={guard(<Leaderboard session={session!} profile={profile} />)} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

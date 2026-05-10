@@ -10,6 +10,7 @@ const NAV_LINKS: { path: string; label: string; auth: boolean }[] = [
   { path: '/',             label: 'Accueil',           auth: false },
   { path: '/games',        label: 'Jeux',              auth: false },
   { path: '/how-it-works', label: 'Comment ça marche', auth: false },
+  { path: '/leaderboard',  label: '🏆 Classement',     auth: false },
   { path: '/chat',         label: '💬 Chat',           auth: true  },
 ];
 
