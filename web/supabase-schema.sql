@@ -361,7 +361,7 @@ alter publication supabase_realtime add table public.conversations;
 
 -- ── Pour te donner les droits admin ───────────────────────
 -- Remplace TONHASHTAG par ton hashtag (sans le #) et exécute :
--- update public.profiles set is_admin = true where hashtag = 'TONHASHTAG';
+-- update public.profiles set is_admin = true where hashtag = 'BOSS1';
 
 -- ── Supabase Storage ──────────────────────────────────────
 -- Crée un bucket public nommé "game-images" dans :

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Profile, Match, Message, Transaction, WithdrawalRequest, GameDef, GAMES, Conversation, ChatMessage } from '../types';
+import { Profile, Match, MatchProof, Message, Transaction, WithdrawalRequest, GameDef, GAMES, Conversation, ChatMessage } from '../types';
 
 function genHashtag(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -65,11 +65,14 @@ export async function updateCredits(userId: string, delta: number): Promise<void
 // ── Matches ───────────────────────────────────────────────
 
 export async function createMatch(
-  challengerId: string, opponentId: string, game: string, wager: number
+  challengerId: string, opponentId: string, game: string, wager: number, conversationId?: string
 ): Promise<Match> {
   const { data, error } = await supabase
     .from('matches')
-    .insert({ game, challenger_id: challengerId, opponent_id: opponentId, wager, status: 'pending' })
+    .insert({
+      game, challenger_id: challengerId, opponent_id: opponentId, wager, status: 'pending',
+      ...(conversationId ? { conversation_id: conversationId } : {}),
+    })
     .select().single();
   if (error) throw error;
   return data;
@@ -121,13 +124,16 @@ export async function submitResult(match: Match, userId: string, result: 'win' |
       await updateCredits(winnerId, match.wager * 2);
       await addTransaction(winnerId, 'match_win', match.wager * 2, `Victoire — ${match.game}`);
       await addTransaction(loserId, 'match_loss', 0, `Défaite — ${match.game}`);
+      await updateMatchStats(winnerId, loserId);
     } else if (!iWin && theyWin) {
       const winnerId = isChallenger ? match.opponent_id : match.challenger_id;
+      const loserId = userId;
       updates.status = 'completed';
       updates.winner_id = winnerId;
       await updateCredits(winnerId, match.wager * 2);
       await addTransaction(winnerId, 'match_win', match.wager * 2, `Victoire — ${match.game}`);
-      await addTransaction(userId, 'match_loss', 0, `Défaite — ${match.game}`);
+      await addTransaction(loserId, 'match_loss', 0, `Défaite — ${match.game}`);
+      await updateMatchStats(winnerId, loserId);
     } else {
       updates.status = 'disputed';
     }
@@ -342,6 +348,22 @@ export async function sendChatMessage(
   await supabase.from('conversations').update({ last_message_at: now }).eq('id', conversationId);
 }
 
+export async function uploadChatImage(
+  conversationId: string, senderId: string, file: File
+): Promise<void> {
+  const ext = file.name.split('.').pop() ?? 'jpg';
+  const path = `${conversationId}/${senderId}-${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from('chat-images').upload(path, file, { upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from('chat-images').getPublicUrl(path);
+  const now = new Date().toISOString();
+  await supabase.from('chat_messages').insert({
+    conversation_id: conversationId, sender_id: senderId,
+    content: data.publicUrl, type: 'image',
+  });
+  await supabase.from('conversations').update({ last_message_at: now }).eq('id', conversationId);
+}
+
 export async function sendDuelProposal(
   conversationId: string, senderId: string, game: string, wager: number
 ): Promise<void> {
@@ -367,4 +389,85 @@ export async function updateDuelProposalStatus(
   await supabase.from('chat_messages').update({
     metadata: { ...meta, status, ...(matchId ? { match_id: matchId } : {}) },
   }).eq('id', messageId);
+}
+
+// ── Match (dispute flow) ──────────────────────────────────
+
+async function updateMatchStats(winnerId: string, loserId: string): Promise<void> {
+  const [w, l] = await Promise.all([getProfile(winnerId), getProfile(loserId)]);
+  await Promise.all([
+    supabase.from('profiles').update({
+      wins: (w?.wins ?? 0) + 1,
+      win_streak: (w?.win_streak ?? 0) + 1,
+    }).eq('id', winnerId),
+    supabase.from('profiles').update({
+      losses: (l?.losses ?? 0) + 1,
+      win_streak: 0,
+    }).eq('id', loserId),
+  ]);
+}
+
+export async function getActiveMatchForConversation(conversationId: string): Promise<Match | null> {
+  const { data } = await supabase
+    .from('matches')
+    .select('*, challenger:profiles!challenger_id(*), opponent:profiles!opponent_id(*)')
+    .eq('conversation_id', conversationId)
+    .in('status', ['active', 'finished', 'disputed', 'completed'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data;
+}
+
+export async function uploadMatchProof(matchId: string, userId: string, file: File): Promise<string> {
+  const ext = file.name.split('.').pop() ?? 'png';
+  const path = `${matchId}/${userId}-${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from('match-proofs').upload(path, file, { upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from('match-proofs').getPublicUrl(path);
+  await supabase.from('match_proofs').insert({ match_id: matchId, user_id: userId, proof_url: data.publicUrl });
+  return data.publicUrl;
+}
+
+export async function getMatchProofs(matchId: string): Promise<MatchProof[]> {
+  const { data } = await supabase
+    .from('match_proofs')
+    .select('*, uploader:profiles!user_id(*)')
+    .eq('match_id', matchId)
+    .order('created_at', { ascending: true });
+  return data || [];
+}
+
+export async function getDisputedMatches(): Promise<Match[]> {
+  const { data } = await supabase
+    .from('matches')
+    .select('*, challenger:profiles!challenger_id(*), opponent:profiles!opponent_id(*)')
+    .eq('status', 'disputed')
+    .order('created_at', { ascending: false });
+  return data || [];
+}
+
+export async function resolveDispute(
+  match: Match,
+  decision: string,
+): Promise<void> {
+  if (decision === 'refund') {
+    await Promise.all([
+      updateCredits(match.challenger_id, match.wager),
+      updateCredits(match.opponent_id, match.wager),
+      addTransaction(match.challenger_id, 'refund', match.wager, `Remboursement litige — ${match.game}`),
+      addTransaction(match.opponent_id, 'refund', match.wager, `Remboursement litige — ${match.game}`),
+    ]);
+    await supabase.from('matches').update({ status: 'completed', winner_id: null }).eq('id', match.id);
+  } else {
+    const winnerId = decision;
+    const loserId = winnerId === match.challenger_id ? match.opponent_id : match.challenger_id;
+    await updateCredits(winnerId, match.wager * 2);
+    await Promise.all([
+      addTransaction(winnerId, 'match_win', match.wager * 2, `Victoire (litige) — ${match.game}`),
+      addTransaction(loserId, 'match_loss', 0, `Défaite (litige) — ${match.game}`),
+    ]);
+    await updateMatchStats(winnerId, loserId);
+    await supabase.from('matches').update({ status: 'completed', winner_id: winnerId }).eq('id', match.id);
+  }
 }

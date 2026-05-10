@@ -55,9 +55,9 @@ DECLARE
   v_p4 UUID := 'aaaaaaaa-0000-0000-0000-000000000004';
   v_c1 UUID; v_c2 UUID; v_c3 UUID; v_c4 UUID;
 BEGIN
-  SELECT id INTO v_me FROM public.profiles WHERE hashtag = 'TONHASHTAG';
+  SELECT id INTO v_me FROM public.profiles WHERE hashtag = 'BOSS1';
   IF v_me IS NULL THEN
-    RAISE EXCEPTION 'Hashtag TONHASHTAG introuvable — remplace-le par le tien dans ce script';
+    RAISE EXCEPTION 'Hashtag BOSS1 introuvable';
   END IF;
 
   -- Conversations (user1_id < user2_id en comparaison texte pour unicité)

@@ -30,7 +30,7 @@ export interface ChatMessage {
   conversation_id: string;
   sender_id: string;
   content: string;
-  type: 'text' | 'duel_proposal';
+  type: 'text' | 'duel_proposal' | 'image';
   metadata?: {
     game?: string;
     wager?: number;
@@ -52,9 +52,19 @@ export interface Match {
   challenger_result: 'win' | 'loss' | null;
   opponent_result: 'win' | 'loss' | null;
   winner_id: string | null;
+  conversation_id: string | null;
   created_at: string;
   challenger?: Profile;
   opponent?: Profile;
+}
+
+export interface MatchProof {
+  id: string;
+  match_id: string;
+  user_id: string;
+  proof_url: string;
+  created_at: string;
+  uploader?: Profile;
 }
 
 export interface Message {

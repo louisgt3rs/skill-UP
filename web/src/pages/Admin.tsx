@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
-import { Profile, GameDef, WithdrawalRequest } from '../types';
+import { Profile, GameDef, WithdrawalRequest, Match, MatchProof, ChatMessage } from '../types';
 import {
   getGames, updateGame, uploadGameImage,
   getAdminStats, getAllWithdrawalRequests, updateWithdrawalStatus,
+  getDisputedMatches, getMatchProofs, resolveDispute, getChatMessages,
 } from '../lib/db';
 import Layout from '../components/Layout';
 import { theme } from '../theme';
 
-type Tab = 'overview' | 'games' | 'withdrawals';
+type Tab = 'overview' | 'games' | 'withdrawals' | 'disputes';
 
 interface Props {
   session: Session;
@@ -30,15 +31,49 @@ export default function Admin({ profile }: Props) {
   const [saveMsg, setSaveMsg] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Disputes
+  const [disputes, setDisputes] = useState<Match[]>([]);
+  const [expandedDispute, setExpandedDispute] = useState<string | null>(null);
+  const [disputeProofs, setDisputeProofs] = useState<Record<string, MatchProof[]>>({});
+  const [disputeMessages, setDisputeMessages] = useState<Record<string, ChatMessage[]>>({});
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+
   const load = async () => {
-    const [g, s, w] = await Promise.all([
+    const [g, s, w, d] = await Promise.all([
       getGames(),
       getAdminStats(),
       getAllWithdrawalRequests(),
+      getDisputedMatches(),
     ]);
     setGames(g);
     setStats(s);
     setWithdrawals(w);
+    setDisputes(d);
+  };
+
+  const expandDispute = async (match: Match) => {
+    const id = match.id;
+    if (expandedDispute === id) { setExpandedDispute(null); return; }
+    setExpandedDispute(id);
+    if (!disputeProofs[id]) {
+      const p = await getMatchProofs(id);
+      setDisputeProofs(prev => ({ ...prev, [id]: p }));
+    }
+    if (match.conversation_id && !disputeMessages[id]) {
+      const msgs = await getChatMessages(match.conversation_id);
+      setDisputeMessages(prev => ({ ...prev, [id]: msgs }));
+    }
+  };
+
+  const handleResolve = async (match: Match, decision: string) => {
+    setResolvingId(match.id);
+    try {
+      await resolveDispute(match, decision);
+      await load();
+      setExpandedDispute(null);
+    } finally {
+      setResolvingId(null);
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -87,6 +122,7 @@ export default function Admin({ profile }: Props) {
     { id: 'overview', label: '📊 Aperçu' },
     { id: 'games', label: '🎮 Jeux' },
     { id: 'withdrawals', label: `💸 Retraits${stats?.pendingWithdrawals ? ` (${stats.pendingWithdrawals})` : ''}` },
+    { id: 'disputes', label: `⚠️ Litiges${disputes.length ? ` (${disputes.length})` : ''}` },
   ];
 
   return (
@@ -126,7 +162,7 @@ export default function Admin({ profile }: Props) {
               { label: 'Utilisateurs', value: stats?.totalUsers ?? '—', icon: '👥', color: theme.colors.primary },
               { label: 'Matchs actifs', value: stats?.activeMatches ?? '—', icon: '⚡', color: theme.colors.success },
               { label: 'Retraits en attente', value: stats?.pendingWithdrawals ?? '—', icon: '💸', color: theme.colors.accent },
-              { label: 'Jeux disponibles', value: games.filter(g => g.available).length, icon: '🎮', color: theme.colors.secondary },
+              { label: 'Litiges ouverts', value: disputes.length, icon: '⚠️', color: theme.colors.error },
             ].map(s => (
               <div key={s.label} style={{
                 backgroundColor: theme.colors.surface,
@@ -149,6 +185,9 @@ export default function Admin({ profile }: Props) {
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <button onClick={() => setTab('games')} style={quickBtn(theme.colors.primary)}>🎮 Gérer les jeux</button>
               <button onClick={() => setTab('withdrawals')} style={quickBtn(theme.colors.accent)}>💸 Voir les retraits</button>
+              {disputes.length > 0 && (
+                <button onClick={() => setTab('disputes')} style={quickBtn(theme.colors.error)}>⚠️ Arbitrer {disputes.length} litige{disputes.length > 1 ? 's' : ''}</button>
+              )}
             </div>
           </div>
         </div>
@@ -419,6 +458,219 @@ export default function Admin({ profile }: Props) {
             withdrawals.map(w => (
               <WithdrawalRow key={w.id} w={w} onAction={handleWithdrawal} />
             ))
+          )}
+        </div>
+      )}
+
+      {/* ── Litiges ── */}
+      {tab === 'disputes' && (
+        <div>
+          <p style={{ color: theme.colors.textMuted, fontSize: 13, marginBottom: 20 }}>
+            {disputes.length} litige{disputes.length !== 1 ? 's' : ''} en attente d'arbitrage
+          </p>
+          {disputes.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 48, color: theme.colors.textMuted }}>
+              <p style={{ fontSize: 32, marginBottom: 12 }}>✅</p>
+              Aucun litige en cours
+            </div>
+          ) : (
+            disputes.map(d => {
+              const isExpanded = expandedDispute === d.id;
+              const proofs = disputeProofs[d.id] ?? [];
+              const msgs = disputeMessages[d.id] ?? [];
+              const isResolving = resolvingId === d.id;
+              const challenger = d.challenger as Profile | undefined;
+              const opponent = d.opponent as Profile | undefined;
+              return (
+                <div key={d.id} style={{
+                  backgroundColor: theme.colors.surface,
+                  border: `1.5px solid ${isExpanded ? theme.colors.error : theme.colors.border}`,
+                  borderRadius: 16, marginBottom: 12, overflow: 'hidden',
+                  transition: 'border-color 0.2s',
+                }}>
+                  {/* Header row */}
+                  <button
+                    onClick={() => expandDispute(d)}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center',
+                      padding: '16px 20px', gap: 16, textAlign: 'left',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ fontSize: 22 }}>⚠️</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                        <span style={{ color: theme.colors.text, fontWeight: 800, fontSize: 15 }}>
+                          {challenger?.username ?? '?'} vs {opponent?.username ?? '?'}
+                        </span>
+                        <span style={{
+                          backgroundColor: `${theme.colors.error}15`,
+                          color: theme.colors.error,
+                          border: `1px solid ${theme.colors.error}30`,
+                          borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 700,
+                        }}>LITIGE</span>
+                      </div>
+                      <p style={{ color: theme.colors.textMuted, fontSize: 13 }}>
+                        {d.game} · Mise : <strong style={{ color: theme.colors.accent }}>{d.wager} cr</strong>
+                        {' · '}{new Date(d.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                      <p style={{ color: theme.colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                        {challenger?.username} déclare : <strong style={{ color: theme.colors.text }}>{d.challenger_result === 'win' ? '🏆 Victoire' : '💀 Défaite'}</strong>
+                        {' · '}
+                        {opponent?.username} déclare : <strong style={{ color: theme.colors.text }}>{d.opponent_result === 'win' ? '🏆 Victoire' : '💀 Défaite'}</strong>
+                      </p>
+                    </div>
+                    <span style={{ color: theme.colors.textMuted, fontSize: 18, transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                      ▾
+                    </span>
+                  </button>
+
+                  {/* Expanded panel */}
+                  {isExpanded && (
+                    <div style={{ borderTop: `1px solid ${theme.colors.border}`, padding: '20px 20px 16px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+
+                        {/* Proofs */}
+                        <div>
+                          <p style={{ ...labelStyle, marginBottom: 10 }}>
+                            📸 Preuves soumises ({proofs.length})
+                          </p>
+                          {proofs.length === 0 ? (
+                            <p style={{ color: theme.colors.textMuted, fontSize: 13 }}>Aucune preuve envoyée</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              {proofs.map(p => {
+                                const uploader = p.uploader as Profile | undefined;
+                                return (
+                                  <div key={p.id} style={{ textAlign: 'center' }}>
+                                    <a href={p.proof_url} target="_blank" rel="noopener noreferrer">
+                                      <img
+                                        src={p.proof_url}
+                                        alt="preuve"
+                                        style={{
+                                          width: 100, height: 100, objectFit: 'cover',
+                                          borderRadius: 10, border: `2px solid ${theme.colors.border}`,
+                                          display: 'block',
+                                        }}
+                                      />
+                                    </a>
+                                    <p style={{ color: theme.colors.textMuted, fontSize: 11, marginTop: 4 }}>
+                                      {uploader?.username ?? '?'}
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Conversation */}
+                        <div>
+                          <p style={{ ...labelStyle, marginBottom: 10 }}>
+                            💬 Conversation ({msgs.length} messages)
+                          </p>
+                          {msgs.length === 0 ? (
+                            <p style={{ color: theme.colors.textMuted, fontSize: 13 }}>
+                              {d.conversation_id ? 'Chargement…' : 'Pas de conversation liée'}
+                            </p>
+                          ) : (
+                            <div style={{
+                              backgroundColor: theme.colors.surfaceHigh,
+                              borderRadius: 10, padding: '10px 12px',
+                              maxHeight: 200, overflowY: 'auto',
+                              display: 'flex', flexDirection: 'column', gap: 6,
+                            }}>
+                              {msgs.slice(-15).map(m => {
+                                const sender = m.sender as Profile | undefined;
+                                const isChal = m.sender_id === d.challenger_id;
+                                return (
+                                  <div key={m.id} style={{
+                                    display: 'flex', gap: 6, alignItems: 'flex-start',
+                                    flexDirection: isChal ? 'row' : 'row-reverse',
+                                  }}>
+                                    <span style={{
+                                      fontSize: 10, fontWeight: 700,
+                                      color: isChal ? theme.colors.primary : theme.colors.secondary,
+                                      flexShrink: 0, paddingTop: 2,
+                                    }}>
+                                      {sender?.username?.slice(0, 6) ?? '?'}
+                                    </span>
+                                    <p style={{
+                                      backgroundColor: isChal ? `${theme.colors.primary}15` : `${theme.colors.secondary}15`,
+                                      border: `1px solid ${isChal ? `${theme.colors.primary}25` : `${theme.colors.secondary}25`}`,
+                                      borderRadius: 8, padding: '4px 8px',
+                                      color: theme.colors.text, fontSize: 12,
+                                      maxWidth: '75%', wordBreak: 'break-word',
+                                    }}>
+                                      {m.content}
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Resolve buttons */}
+                      <div style={{
+                        backgroundColor: `${theme.colors.error}08`,
+                        border: `1px solid ${theme.colors.error}20`,
+                        borderRadius: 12, padding: '14px 16px',
+                      }}>
+                        <p style={{ color: theme.colors.text, fontWeight: 700, fontSize: 14, marginBottom: 12 }}>
+                          Décision de l'arbitre
+                        </p>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button
+                            onClick={() => handleResolve(d, d.challenger_id)}
+                            disabled={isResolving}
+                            style={{
+                              flex: 1, minWidth: 160, padding: '10px 14px', borderRadius: 10,
+                              fontWeight: 700, fontSize: 13, cursor: isResolving ? 'wait' : 'pointer',
+                              background: `linear-gradient(135deg, ${theme.colors.success}, #059669)`,
+                              border: 'none', color: '#fff',
+                              boxShadow: '0 0 14px rgba(16,185,129,0.3)',
+                            }}
+                          >
+                            🏆 {challenger?.username} gagne
+                          </button>
+                          <button
+                            onClick={() => handleResolve(d, d.opponent_id)}
+                            disabled={isResolving}
+                            style={{
+                              flex: 1, minWidth: 160, padding: '10px 14px', borderRadius: 10,
+                              fontWeight: 700, fontSize: 13, cursor: isResolving ? 'wait' : 'pointer',
+                              background: `linear-gradient(135deg, ${theme.colors.primary}, ${theme.colors.primaryDark})`,
+                              border: 'none', color: '#fff',
+                              boxShadow: '0 0 14px rgba(124,58,237,0.3)',
+                            }}
+                          >
+                            🏆 {opponent?.username} gagne
+                          </button>
+                          <button
+                            onClick={() => handleResolve(d, 'refund')}
+                            disabled={isResolving}
+                            style={{
+                              flex: 1, minWidth: 120, padding: '10px 14px', borderRadius: 10,
+                              fontWeight: 700, fontSize: 13, cursor: isResolving ? 'wait' : 'pointer',
+                              backgroundColor: theme.colors.surfaceHigh,
+                              border: `1.5px solid ${theme.colors.border}`,
+                              color: theme.colors.textSecondary,
+                            }}
+                          >
+                            🤝 Remboursement
+                          </button>
+                        </div>
+                        {isResolving && (
+                          <p style={{ color: theme.colors.textMuted, fontSize: 12, marginTop: 8 }}>Résolution en cours…</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
       )}
