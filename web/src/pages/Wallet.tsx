@@ -1,8 +1,8 @@
 import { useEffect, useState, FormEvent } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Session } from '@supabase/supabase-js';
 import { Profile, Transaction, WithdrawalRequest } from '../types';
-import { getTransactions, getWithdrawalRequests, requestWithdrawal } from '../lib/db';
+import { getTransactions, getWithdrawalRequests } from '../lib/db';
 import Layout from '../components/Layout';
 import Input from '../components/Input';
 import Button from '../components/Button';
@@ -48,14 +48,16 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
   const [searchParams] = useSearchParams();
 
   // Withdrawal form
-  const [wAmount, setWAmount]   = useState('');
-  const [wName, setWName]       = useState('');
-  const [wIban, setWIban]       = useState('');
-  const [wLoading, setWLoading] = useState(false);
-  const [wSuccess, setWSuccess] = useState(false);
-  const [wError, setWError]     = useState('');
+  const [wAmount, setWAmount]       = useState('');
+  const [wLoading, setWLoading]     = useState(false);
+  const [wSuccess, setWSuccess]     = useState(false);
+  const [wError, setWError]         = useState('');
+  const [wArrivalDate, setWArrivalDate] = useState('');
+  const [connectStatus, setConnectStatus] = useState<'loading' | 'none' | 'pending' | 'ready'>('loading');
+  const [connectLoading, setConnectLoading] = useState(false);
 
-  const paymentStatus = searchParams.get('payment');
+  const paymentStatus  = searchParams.get('payment');
+  const connectParam   = searchParams.get('connect');
 
   useEffect(() => {
     Promise.all([
@@ -67,7 +69,38 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
       refreshProfile();
       setTab('overview');
     }
-  }, [session.user.id, paymentStatus]);
+    if (connectParam === 'success' || connectParam === 'refresh') {
+      setTab('withdraw');
+      refreshProfile();
+    }
+  }, [session.user.id, paymentStatus, connectParam]);
+
+  useEffect(() => {
+    if (tab !== 'withdraw') return;
+    setConnectStatus('loading');
+    fetch(`/api/connect-status?userId=${session.user.id}`)
+      .then(r => r.json())
+      .then(d => setConnectStatus(d.status ?? 'none'))
+      .catch(() => setConnectStatus('none'));
+  }, [tab, session.user.id]);
+
+  const handleConnect = async () => {
+    setConnectLoading(true);
+    try {
+      const res = await fetch('/api/connect-onboarding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: session.user.id }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else alert('Erreur : ' + (data.error || 'inconnu'));
+    } catch {
+      alert('Erreur réseau.');
+    } finally {
+      setConnectLoading(false);
+    }
+  };
 
   const handleBuy = async () => {
     const amountEur = parseFloat(buyAmount);
@@ -95,20 +128,24 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
   const handleWithdraw = async (e: FormEvent) => {
     e.preventDefault();
     setWError('');
-    const amount = parseInt(wAmount, 10);
-    if (!amount || amount < 500) { setWError('Montant minimum : 500 crédits (5 €)'); return; }
-    if (!wName.trim())           { setWError('Nom complet requis'); return; }
-    if (!wIban.trim())           { setWError('IBAN requis'); return; }
-    if (!profile || amount > profile.credits) { setWError('Crédits insuffisants'); return; }
+    const credits = parseInt(wAmount, 10);
+    if (!credits || credits < 500)              { setWError('Montant minimum : 500 crédits (5 €)'); return; }
+    if (!profile || credits > profile.credits)  { setWError('Crédits insuffisants'); return; }
     setWLoading(true);
     try {
-      await requestWithdrawal(session.user.id, amount, wName.trim(), wIban.trim());
+      const res = await fetch('/api/withdraw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: session.user.id, credits }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setWError(data.error || 'Erreur lors du retrait'); return; }
+      setWArrivalDate(data.arrivalDate ?? '');
       setWSuccess(true);
       refreshProfile();
       getTransactions(session.user.id).then(setTx);
-      getWithdrawalRequests(session.user.id).then(setReqs);
-    } catch (e: any) {
-      setWError(e.message || 'Erreur lors de la demande');
+    } catch {
+      setWError('Erreur réseau. Réessaie dans un moment.');
     } finally {
       setWLoading(false);
     }
@@ -248,7 +285,7 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
                 <div style={{ fontSize: 28, marginBottom: 10 }}>🏦</div>
                 Retirer mes gains
                 <p style={{ color: theme.colors.textMuted, fontSize: 12, fontWeight: 400, marginTop: 4 }}>
-                  Virement IBAN sous 48h
+                  Virement automatique ⚡
                 </p>
               </button>
             </div>
@@ -424,13 +461,15 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
                 border: `1px solid ${theme.colors.success}30`,
                 borderRadius: 20,
               }}>
-                <div style={{ fontSize: 56, marginBottom: 20 }}>✅</div>
+                <div style={{ fontSize: 56, marginBottom: 20 }}>⚡</div>
                 <h3 style={{ color: theme.colors.success, fontWeight: 800, fontSize: 22, marginBottom: 12 }}>
-                  Demande envoyée !
+                  Virement déclenché !
                 </h3>
                 <p style={{ color: theme.colors.textSecondary, lineHeight: 1.7, marginBottom: 24 }}>
-                  Ton retrait de <strong>{Math.round(parseInt(wAmount) / 100 * 100) / 100} €</strong> est en cours de traitement.<br />
-                  Délai habituel : 24 à 48h ouvrées.
+                  {(parseInt(wAmount) / 100).toFixed(2)} € en route vers ton compte bancaire.<br />
+                  {wArrivalDate
+                    ? <>Arrivée estimée : <strong style={{ color: theme.colors.text }}>{wArrivalDate}</strong></>
+                    : 'Arrivée estimée : prochaine journée ouvrée.'}
                 </p>
                 <button onClick={() => { setWSuccess(false); setTab('overview'); }} style={{
                   background: theme.gradients.primary, border: 'none',
@@ -440,51 +479,125 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
                   Retour au portefeuille
                 </button>
               </div>
+            ) : connectStatus === 'loading' ? (
+              <p style={{ color: theme.colors.textMuted, fontSize: 14, textAlign: 'center', padding: 32 }}>
+                Chargement...
+              </p>
+            ) : connectStatus === 'none' ? (
+              <div style={{ textAlign: 'center', padding: '40px 24px' }}>
+                <div style={{ fontSize: 52, marginBottom: 16 }}>🏦</div>
+                <h3 style={{ color: theme.colors.text, fontWeight: 800, fontSize: 20, marginBottom: 12 }}>
+                  Connecte ton compte bancaire
+                </h3>
+                <p style={{ color: theme.colors.textSecondary, fontSize: 14, lineHeight: 1.7, marginBottom: 28, maxWidth: 380, margin: '0 auto 28px' }}>
+                  Pour recevoir tes gains directement sur ton compte en banque,
+                  connecte-le via <strong>Stripe</strong> — sécurisé, rapide, sans intermédiaire.
+                </p>
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center',
+                  backgroundColor: `${theme.colors.accent}0d`,
+                  border: `1px solid ${theme.colors.accent}25`,
+                  borderRadius: 14, padding: '16px 20px', marginBottom: 28,
+                  fontSize: 13, color: theme.colors.textSecondary, lineHeight: 1.8,
+                }}>
+                  <p style={{ margin: 0 }}>✅ Vérification d'identité sécurisée par Stripe</p>
+                  <p style={{ margin: 0 }}>⚡ Virement automatique dès que tu retires</p>
+                  <p style={{ margin: 0 }}>🔒 Tes données bancaires ne passent jamais par SkillUp</p>
+                </div>
+                <button
+                  onClick={handleConnect}
+                  disabled={connectLoading}
+                  style={{
+                    background: theme.gradients.primary, border: 'none',
+                    borderRadius: 14, color: '#fff', cursor: connectLoading ? 'not-allowed' : 'pointer',
+                    padding: '14px 32px', fontWeight: 800, fontSize: 15,
+                    boxShadow: `0 0 24px ${theme.colors.primary}40`,
+                    opacity: connectLoading ? 0.7 : 1,
+                  }}
+                >
+                  {connectLoading ? '⏳ Redirection...' : '🏦 Connecter mon compte bancaire'}
+                </button>
+              </div>
+            ) : connectStatus === 'pending' ? (
+              <div style={{ textAlign: 'center', padding: '40px 24px' }}>
+                <div style={{ fontSize: 52, marginBottom: 16 }}>⏳</div>
+                <h3 style={{ color: theme.colors.accent, fontWeight: 800, fontSize: 20, marginBottom: 12 }}>
+                  Vérification en cours
+                </h3>
+                <p style={{ color: theme.colors.textSecondary, fontSize: 14, lineHeight: 1.7, marginBottom: 28 }}>
+                  Tu n'as pas encore finalisé la vérification de ton compte bancaire.<br />
+                  Complète les étapes sur Stripe pour activer les retraits.
+                </p>
+                <button
+                  onClick={handleConnect}
+                  disabled={connectLoading}
+                  style={{
+                    background: theme.gradients.primary, border: 'none',
+                    borderRadius: 14, color: '#fff', cursor: connectLoading ? 'not-allowed' : 'pointer',
+                    padding: '14px 32px', fontWeight: 800, fontSize: 15,
+                    opacity: connectLoading ? 0.7 : 1,
+                  }}
+                >
+                  {connectLoading ? '⏳ Redirection...' : '🔄 Finaliser la vérification'}
+                </button>
+              </div>
             ) : (
+              /* connectStatus === 'ready' */
               <form onSubmit={handleWithdraw}>
                 <div style={{
-                  backgroundColor: `${theme.colors.accent}0d`,
-                  border: `1px solid ${theme.colors.accent}30`,
-                  borderRadius: 14, padding: '14px 18px', marginBottom: 24,
-                  display: 'flex', gap: 10,
+                  backgroundColor: `${theme.colors.success}0d`,
+                  border: `1px solid ${theme.colors.success}30`,
+                  borderRadius: 14, padding: '12px 18px', marginBottom: 24,
+                  display: 'flex', alignItems: 'center', gap: 10,
                 }}>
-                  <span>⚠️</span>
-                  <p style={{ color: theme.colors.textSecondary, fontSize: 13, lineHeight: 1.6 }}>
-                    <strong style={{ color: theme.colors.accent }}>Retraits vérifiés manuellement avant validation.</strong>
-                    {' '}Délai : 24–48h ouvrées. Minimum : 500 crédits (5 €).
-                    <br />Solde actuel : <strong style={{ color: theme.colors.text }}>{(profile?.credits ?? 0).toLocaleString()} cr</strong>
+                  <span>✅</span>
+                  <p style={{ color: theme.colors.textSecondary, fontSize: 13, lineHeight: 1.5 }}>
+                    <strong style={{ color: theme.colors.success }}>Compte bancaire vérifié.</strong>
+                    {' '}Virement automatique · Minimum 500 cr (5 €) ·{' '}
+                    Solde : <strong style={{ color: theme.colors.text }}>{(profile?.credits ?? 0).toLocaleString()} cr</strong>
                   </p>
                 </div>
 
-                <Input
-                  label="Montant à retirer (crédits)"
-                  type="number"
-                  value={wAmount}
-                  onChange={e => setWAmount(e.target.value)}
-                  placeholder="500"
-                  min={500}
-                />
-                {wAmount && parseInt(wAmount) >= 100 && (
-                  <p style={{ color: theme.colors.accent, fontSize: 13, marginTop: -10, marginBottom: 16, fontWeight: 600 }}>
-                    = {(parseInt(wAmount) / 100).toFixed(2)} €
+                <div style={{
+                  backgroundColor: theme.colors.surface,
+                  border: `1.5px solid ${theme.colors.border}`,
+                  borderRadius: 20, padding: '24px', marginBottom: 16,
+                }}>
+                  <p style={{ color: theme.colors.textMuted, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 16 }}>
+                    Montant à retirer
                   </p>
-                )}
-
-                <Input
-                  label="Nom complet (titulaire du compte bancaire)"
-                  value={wName}
-                  onChange={e => setWName(e.target.value)}
-                  placeholder="Jean Dupont"
-                  autoComplete="name"
-                />
-
-                <Input
-                  label="IBAN"
-                  value={wIban}
-                  onChange={e => setWIban(e.target.value.toUpperCase().replace(/\s/g, '').replace(/(.{4})/g, '$1 ').trim())}
-                  placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
-                  style={{ letterSpacing: 1.5, fontFamily: 'monospace' }}
-                />
+                  <div style={{ position: 'relative', marginBottom: 12 }}>
+                    <input
+                      type="number"
+                      min={500}
+                      max={profile?.credits ?? 0}
+                      value={wAmount}
+                      onChange={e => setWAmount(e.target.value)}
+                      placeholder="500"
+                      style={{
+                        width: '100%', padding: '14px 16px',
+                        backgroundColor: theme.colors.surfaceHigh,
+                        border: `1.5px solid ${wAmount ? theme.colors.primary + '60' : theme.colors.border}`,
+                        borderRadius: 12, color: theme.colors.text,
+                        fontSize: 20, fontWeight: 700, outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                  {wAmount && parseInt(wAmount) >= 100 && (
+                    <div style={{
+                      backgroundColor: `${theme.colors.accent}10`,
+                      border: `1px solid ${theme.colors.accent}25`,
+                      borderRadius: 10, padding: '10px 16px',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    }}>
+                      <span style={{ color: theme.colors.textMuted, fontSize: 13 }}>Tu recevras</span>
+                      <span style={{ color: theme.colors.accent, fontWeight: 900, fontSize: 20 }}>
+                        {(parseInt(wAmount) / 100).toFixed(2)} €
+                      </span>
+                    </div>
+                  )}
+                </div>
 
                 {wError && (
                   <div style={{
@@ -496,8 +609,11 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
                 )}
 
                 <Button type="submit" loading={wLoading} size="lg">
-                  Demander un retrait
+                  ⚡ Virer maintenant
                 </Button>
+                <p style={{ color: theme.colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: 12 }}>
+                  Le virement est déclenché immédiatement · Arrivée J+1 ouvré (SEPA Instant si dispo)
+                </p>
               </form>
             )}
           </div>

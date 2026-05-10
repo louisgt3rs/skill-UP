@@ -14,6 +14,7 @@ export interface Profile {
   discord_username: string | null;
   discord_avatar: string | null;
   discord_linked_at: string | null;
+  stripe_connect_id?: string | null;
   created_at: string;
 }
 
