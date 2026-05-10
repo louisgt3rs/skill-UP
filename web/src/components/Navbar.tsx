@@ -6,12 +6,18 @@ import { Profile } from '../types';
 import { theme } from '../theme';
 import { useIsMobile } from '../hooks/useIsMobile';
 
-const NAV_LINKS: { path: string; label: string; auth: boolean }[] = [
-  { path: '/',             label: 'Accueil',           auth: false },
-  { path: '/games',        label: 'Jeux',              auth: false },
-  { path: '/how-it-works', label: 'Comment ça marche', auth: false },
-  { path: '/leaderboard',  label: '🏆 Classement',     auth: false },
-  { path: '/chat',         label: '💬 Chat',           auth: true  },
+const NAV_LINKS_GUEST: { path: string; label: string }[] = [
+  { path: '/',             label: 'Accueil'           },
+  { path: '/games',        label: 'Jeux'              },
+  { path: '/how-it-works', label: 'Comment ça marche' },
+  { path: '/leaderboard',  label: '🏆 Classement'     },
+];
+
+const NAV_LINKS_AUTH: { path: string; label: string }[] = [
+  { path: '/hub',          label: '🏠 Lobby'          },
+  { path: '/games',        label: 'Jeux'              },
+  { path: '/leaderboard',  label: '🏆 Classement'     },
+  { path: '/chat',         label: '💬 Chat'           },
 ];
 
 interface Props {
@@ -75,7 +81,7 @@ export default function Navbar({ session, profile }: Props) {
         {/* Desktop nav */}
         {!isMobile && (
           <nav style={{ display: 'flex', gap: 2 }}>
-            {NAV_LINKS.filter(link => !link.auth || !!session).map(link => (
+            {(session ? NAV_LINKS_AUTH : NAV_LINKS_GUEST).map(link => (
               <NavBtn key={link.path} active={isActive(link.path)} onClick={() => navigate(link.path)}>
                 {link.label}
               </NavBtn>
@@ -135,7 +141,8 @@ export default function Navbar({ session, profile }: Props) {
                   </div>
                   <div style={{ padding: '4px 0' }}>
                     {[
-                      { icon: '🏠', label: 'Dashboard',    path: '/dashboard' },
+                      { icon: '🏠', label: 'Lobby',        path: '/hub' },
+                      { icon: '📋', label: 'Historique',   path: '/dashboard' },
                       { icon: '👤', label: 'Mon profil',   path: '/profile' },
                       { icon: '💳', label: 'Portefeuille', path: '/wallet' },
                       ...(profile?.is_admin ? [{ icon: '⚙️', label: 'Admin Panel', path: '/admin' }] : []),
@@ -215,7 +222,7 @@ export default function Navbar({ session, profile }: Props) {
         }}>
           {/* Nav links */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 20 }}>
-            {NAV_LINKS.filter(link => !link.auth || !!session).map(link => (
+            {(session ? NAV_LINKS_AUTH : NAV_LINKS_GUEST).map(link => (
               <button
                 key={link.path}
                 onClick={() => go(link.path)}
@@ -248,7 +255,8 @@ export default function Navbar({ session, profile }: Props) {
                 }}>#{profile?.hashtag}</span>
               </div>
               {[
-                { icon: '🏠', label: 'Dashboard',    path: '/dashboard' },
+                { icon: '🏠', label: 'Lobby',        path: '/hub' },
+                { icon: '📋', label: 'Historique',   path: '/dashboard' },
                 { icon: '👤', label: 'Mon profil',   path: '/profile' },
                 { icon: '💳', label: 'Portefeuille', path: '/wallet' },
                 ...(profile?.is_admin ? [{ icon: '⚙️', label: 'Admin Panel', path: '/admin' }] : []),

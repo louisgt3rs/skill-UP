@@ -21,6 +21,7 @@ import Admin        from './pages/Admin';
 import Onboarding   from './pages/Onboarding';
 import Chat         from './pages/Chat';
 import Leaderboard  from './pages/Leaderboard';
+import Hub          from './pages/Hub';
 
 // Pages that should not show the navbar
 const NO_NAV_PAGES = ['/onboarding'];
@@ -64,20 +65,21 @@ function AppRouter({ session, profile, refresh }: AppRouterProps) {
       <ConditionalNavbar session={session} profile={profile} />
       <Routes>
         {/* Public */}
-        <Route path="/"              element={<Landing />} />
+        <Route path="/"              element={session ? <Navigate to="/hub" replace /> : <Landing />} />
         <Route path="/how-it-works"  element={<HowItWorks />} />
-        <Route path="/login"         element={!session ? <Login /> : <Navigate to="/dashboard" replace />} />
-        <Route path="/signup"        element={!session ? <Signup /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/login"         element={!session ? <Login /> : <Navigate to="/hub" replace />} />
+        <Route path="/signup"        element={!session ? <Signup /> : <Navigate to="/hub" replace />} />
 
         {/* Onboarding */}
         <Route path="/onboarding" element={
           !session ? <Navigate to="/login" replace />
-          : (profile && profile.onboarding_done) ? <Navigate to="/dashboard" replace />
+          : (profile && profile.onboarding_done) ? <Navigate to="/hub" replace />
           : profile ? <Onboarding {...protectedProps} />
           : <Loader />
         } />
 
         {/* Protected */}
+        <Route path="/hub"                 element={guard(<Hub {...protectedProps} />)} />
         <Route path="/dashboard"           element={guard(<Dashboard {...protectedProps} />)} />
         <Route path="/games"               element={guard(<Games />)} />
         <Route path="/games/:slug"         element={guard(<GameDetail {...protectedProps} />)} />
