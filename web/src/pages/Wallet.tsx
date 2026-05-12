@@ -4,7 +4,6 @@ import { Session } from '@supabase/supabase-js';
 import { Profile, Transaction, WithdrawalRequest } from '../types';
 import { getTransactions, getWithdrawalRequests } from '../lib/db';
 import Layout from '../components/Layout';
-import Input from '../components/Input';
 import Button from '../components/Button';
 import { theme } from '../theme';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -78,7 +77,7 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
   useEffect(() => {
     if (tab !== 'withdraw') return;
     setConnectStatus('loading');
-    fetch(`/api/connect-status?userId=${session.user.id}`)
+    fetch(`/api/connect-status?userId=${session.user.id}`, { headers: { Authorization: `Bearer ${session.access_token}` } })
       .then(r => r.json())
       .then(d => setConnectStatus(d.status ?? 'none'))
       .catch(() => setConnectStatus('none'));
@@ -89,7 +88,7 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
     try {
       const res = await fetch('/api/connect-onboarding', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ userId: session.user.id }),
       });
       const data = await res.json();
@@ -102,6 +101,11 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
     }
   };
 
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${session.access_token}`,
+  };
+
   const handleBuy = async () => {
     const amountEur = parseFloat(buyAmount);
     if (!amountEur || amountEur < 1 || amountEur > 1000) return;
@@ -109,7 +113,7 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
     try {
       const res = await fetch('/api/create-checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ amountEur, userId: session.user.id }),
       });
       const data = await res.json();
@@ -135,7 +139,7 @@ export default function Wallet({ session, profile, refreshProfile }: Props) {
     try {
       const res = await fetch('/api/withdraw', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ userId: session.user.id, credits }),
       });
       const data = await res.json();

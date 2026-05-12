@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { verifyJWT } from './_auth';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, { apiVersion: '2023-10-16' });
 const supabase = createClient(
@@ -11,6 +12,11 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
   const { userId } = req.body as { userId: string };
   if (!userId) return res.status(400).json({ error: 'userId requis' });
+
+  const verifiedId = await verifyJWT(req);
+  if (!verifiedId || verifiedId !== userId) {
+    return res.status(401).json({ error: 'Non autorisé' });
+  }
 
   const origin = req.headers.origin || `https://${req.headers.host}`;
 

@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { sendEmail, emailDepositSuccess } from './_email';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: '2023-10-16',
@@ -44,7 +45,7 @@ export default async function handler(req: any, res: any) {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
-    const { userId, credits, packageId } = session.metadata ?? {};
+    const { userId, credits } = session.metadata ?? {};
 
     if (!userId || !credits) {
       console.error('Missing metadata in session', session.id);
@@ -90,6 +91,15 @@ export default async function handler(req: any, res: any) {
     });
 
     console.log(`✅ Added ${creditsToAdd} credits to user ${userId}`);
+
+    const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+    if (authUser.user?.email) {
+      await sendEmail(
+        authUser.user.email,
+        '🎉 Tes crédits SkillUp sont arrivés !',
+        emailDepositSuccess(creditsToAdd),
+      );
+    }
   }
 
   return res.status(200).json({ received: true });

@@ -19,9 +19,14 @@ import ProfilePage from './pages/Profile';
 import Wallet      from './pages/Wallet';
 import Admin        from './pages/Admin';
 import Onboarding   from './pages/Onboarding';
-import Chat         from './pages/Chat';
-import Leaderboard  from './pages/Leaderboard';
-import Hub          from './pages/Hub';
+import Chat          from './pages/Chat';
+import Leaderboard   from './pages/Leaderboard';
+import Hub           from './pages/Hub';
+import PublicProfile from './pages/PublicProfile';
+import CGU          from './pages/CGU';
+import Privacy      from './pages/Privacy';
+import Legal        from './pages/Legal';
+import NotFound     from './pages/NotFound';
 
 // Pages that should not show the navbar
 const NO_NAV_PAGES = ['/onboarding'];
@@ -90,8 +95,14 @@ function AppRouter({ session, profile, refresh }: AppRouterProps) {
         <Route path="/chat"                element={guard(<Chat {...protectedProps} />)} />
         <Route path="/chat/:conversationId" element={guard(<Chat {...protectedProps} />)} />
         <Route path="/leaderboard"         element={guard(<Leaderboard session={session!} profile={profile} />)} />
+        <Route path="/player/:id"          element={guard(<PublicProfile />)} />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Legal — public */}
+        <Route path="/cgu"     element={<CGU />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/legal"   element={<Legal />} />
+
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </>
   );

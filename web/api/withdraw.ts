@@ -1,5 +1,7 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { verifyJWT } from './_auth';
+import { sendEmail, emailWithdrawalSuccess } from './_email';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, { apiVersion: '2023-10-16' });
 const supabase = createClient(
@@ -10,6 +12,11 @@ const supabase = createClient(
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
   const { userId, credits } = req.body as { userId: string; credits: number };
+
+  const verifiedId = await verifyJWT(req);
+  if (!verifiedId || verifiedId !== userId) {
+    return res.status(401).json({ error: 'Non autorisé' });
+  }
 
   if (!userId || !credits || credits < 100) {
     return res.status(400).json({ error: 'Montant minimum 100 crédits (1 €)' });
@@ -84,6 +91,16 @@ export default async function handler(req: any, res: any) {
       const arrivalDate = new Date(payout.arrival_date * 1000).toLocaleDateString('fr-FR', {
         weekday: 'long', day: 'numeric', month: 'long',
       });
+
+      // Send confirmation email
+      const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+      if (authUser.user?.email) {
+        await sendEmail(
+          authUser.user.email,
+          '⚡ Ton virement SkillUp est en route',
+          emailWithdrawalSuccess(credits, arrivalDate),
+        );
+      }
 
       return res.status(200).json({ success: true, arrivalDate });
     } catch (stripeErr: any) {
